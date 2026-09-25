@@ -1,0 +1,53 @@
+[project]
+name = "forecasting-platform"
+version = "0.1.0"
+description = "End-to-end, domain-agnostic multi-series demand forecasting platform"
+authors = [
+    { name = "abhirup ghosh", email = "abhirup.ghosh.184098@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "chronos-forecasting>=2.3.2",
+    "evidently>=0.7.23",
+    "fastapi>=0.141.1",
+    "kaggle>=2.2.4",
+    "lightgbm>=4.7.0",
+    "mlflow>=3.16.1",
+    "mlforecast>=1.1.0",
+    "neuralforecast>=3.2.2",
+    "numpy>=2.4.6",
+    "pandas>=2.3.3",
+    "plotly>=5.24.1",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.3",
+    "scikit-learn>=1.9.1",
+    "statsforecast>=2.1.1",
+    "streamlit>=1.64.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "jupyter>=1.1.1",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
