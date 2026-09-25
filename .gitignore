@@ -1,0 +1,57 @@
+# --- Data (never commit Kaggle data — redistribution violates competition rules) ---
+data/raw/
+data/processed/
+data/interim/
+*.csv
+!tests/fixtures/**/*.csv
+!data/README.md
+
+# --- Secrets / credentials ---
+.env
+.env.*
+!.env.example
+kaggle.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- uv ---
+uv.lock.bak
+
+# --- MLflow / experiment artifacts ---
+mlruns/
+mlartifacts/
+*.mlflow
+
+# --- Model artifacts (large binaries; document how to regenerate instead) ---
+artifacts/
+*.pkl
+*.joblib
+*.pt
+*.ckpt
+!tests/fixtures/**/*.pkl
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Docker ---
+*.pid
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Monitoring/report outputs (regenerable) ---
+reports/generated/
