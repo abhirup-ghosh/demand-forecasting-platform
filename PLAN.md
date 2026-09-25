@@ -2,7 +2,10 @@
 
 **Owner:** Abhirup Ghosh
 **Repo:** `abhirup-ghosh/demand-forecasting-platform` (public)
-**Local path:** `/Users/abhirupghosh/Documents/Work/career/projects/demand-forecasting-platform`
+**Local path:** `/Users/abhirupghosh/Documents/Work/career/projects/case_studies/demand-forecasting-platform`
+(filed under `case_studies/` because it originated from a job-interview take-home — see section 1 —
+but unlike its `case_studies/` siblings it remains its own nested git repo with its own public GitHub
+remote, not a plain archived folder)
 **Status as of this writing:** repo scaffolded, plan written, zero implementation done. Everything
 from P0.1 onward is unstarted.
 
