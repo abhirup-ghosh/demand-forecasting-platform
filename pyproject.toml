@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "kaggle>=2.2.4",
     "lightgbm>=4.7.0",
+    "matplotlib>=3.11.2",
     "mlflow>=3.16.1",
     "mlforecast>=1.1.0",
     "neuralforecast>=3.2.2",
