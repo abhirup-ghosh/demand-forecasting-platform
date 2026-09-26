@@ -568,6 +568,22 @@ Use built-in conformal intervals (`level=[80]`) for the interval columns.
 **DoD:** produces forecasts for all series in a fold within a few minutes on a laptop; forecast frame
 matches the shared contract.
 
+##### Outcome — P0.6b (completed 2026-09-26)
+
+**What we did:** `models/statistical.py` — `forecast_statistical()` runs local AutoETS (full
+history) + AutoARIMA (**last 180 days**, Abhirup's choice after timing: full history was ~2 h/fold)
+with `season_length=7` (the libraries default to 1 = no seasonality), conformal 80% intervals
+(2 windows), SeasonalNaive fallback on fit failure. All-zero series → 0; leading zeros trimmed;
+too-short series → seasonal naive; outputs clipped at 0. `tests/test_models_statistical.py`
+(6 tests). pytest now imports from `src/` directly (`pythonpath`), because macOS keeps re-flagging
+`.venv` files as hidden (Python 3.13 then skips the editable-install `.pth`; fix:
+`chflags -R nohidden .venv`).
+
+**Results:** tests 6/6. Fold 1, all 1782 series: **7.2 min** for both models, 99,792 rows, contract
+ok, no NaNs (1728 fitted, 53 zero, 1 fallback). WAPE: **AutoETS 15.9%**, AutoARIMA 16.7% (vs
+SeasonalNaive 17.2%). 80% intervals **under-cover: ~61%** for both, flat across the horizon →
+for P0.7 to measure across folds (more conformal windows is the obvious lever).
+
 #### P0.6c — Gradient-boosted trees (global ML model)
 **File:** `src/forecasting_platform/models/ml.py`
 Wrap `mlforecast.MLForecast` with an `LGBMRegressor`, using lag/rolling-window transforms matching

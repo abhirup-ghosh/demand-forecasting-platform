@@ -52,6 +52,9 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Import from src/ directly so tests don't depend on the editable-install .pth file (macOS can
+# flag it "hidden", which Python 3.13 then skips — see PLAN.md P0.4/P0.6b Outcomes).
+pythonpath = ["src"]
 filterwarnings = [
     # pandas 2.3 Timestamp/Timedelta arithmetic under numpy 2.4 — upstream, not actionable here.
     "ignore:The 'generic' unit for NumPy timedelta:DeprecationWarning",

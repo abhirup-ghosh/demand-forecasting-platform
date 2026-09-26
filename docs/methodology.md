@@ -164,6 +164,15 @@ algorithm:
 2. Run a stepwise search over the remaining orders $(p,q,P,Q)$, keeping the model with the
    lowest AICc.
 
+#### How it's configured here
+
+- **Weekly seasonality:** both models use `season_length=7`.
+- **Different history lengths:** AutoETS is fitted on each series' full history. AutoARIMA uses
+  only the **last 180 days**: its stepwise search took about 2 hours per backtest fold on full
+  history, versus about 7 minutes on 180 days. On a 60-series test sample, the shorter history
+  cost only 0.3 WAPE points. For a 28-day horizon, the most recent six months carry most of the
+  relevant dynamics, so this is a deliberate, documented scoping choice.
+
 #### Why this tier is included
 
 - **Strong benchmarks.** In the M-series forecasting competitions, these methods were hard to
