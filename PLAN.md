@@ -64,7 +64,7 @@ See the Architecture Decisions table, "Forecasting breadth" row.
 | CI | GitHub Actions (lint via `ruff`, test via `pytest`, Docker build) | Free on public repos; a visible green-checkmark badge is a cheap, real credibility signal. |
 | Drift monitoring | Evidently — lightweight batch HTML report in P0, continuous/scheduled in P1 | Shows train/serving-skew awareness (real MLOps maturity) without building a full always-on monitoring stack inside a scoped portfolio build. |
 | Deployment target | Hugging Face Spaces (Docker SDK), hosting the dashboard | Free, zero maintenance, no credit card, supports Docker directly — the best fit for a public, always-available recruiter-facing link. The FastAPI service is still fully built/tested/dockerized (see P0.9, P0.12) even though it isn't the thing kept always-on publicly. |
-| Data handling | Kaggle CSVs are **never committed**; `data/raw/` and `data/processed/` are gitignored; data is fetched via the `kaggle` CLI or a documented manual fallback | The repo is **public**. Redistributing the raw competition dataset would violate Kaggle's competition rules. This is a hard constraint, not a style preference — see `data/README.md` (created in P0.2). |
+| Data handling | Kaggle CSVs are **never committed**; the raw-data directory (`eda/data/`, see 3.1) and `data/processed/` are gitignored; data is fetched via the `kaggle` CLI or a documented manual fallback | The repo is **public**. Redistributing the raw competition dataset would violate Kaggle's competition rules. This is a hard constraint, not a style preference — see `data/README.md` (created in P0.2). |
 | Repo naming / narrative framing | "Demand Forecasting Platform"; README/docs written around the general demand-forecasting problem class; real retail data kept as-is (not artificially renamed) | Matches the "generic narrative, real data" decision: real data keeps the project credible and lets you speak to real data-quality issues in interviews, while the writing frames it as a transferable technique set, not a retail project. |
 
 ---
@@ -73,7 +73,10 @@ See the Architecture Decisions table, "Forecasting breadth" row.
 
 ### 3.1 Source data (Kaggle "Store Sales - Time Series Forecasting")
 
-Six files, once downloaded into `data/raw/` (see P0.2 — **never commit these**):
+Six files, once downloaded into `eda/data/store-sales-time-series-forecasting/` (see P0.2 — **never commit these**; this is the
+raw-data location — `settings.DATA_RAW_DIR` — changed from the originally planned `data/raw/` on
+2026-09-26 after the dataset was downloaded manually there; `eda/data/` is gitignored wholesale,
+including the original `.zip`):
 
 | File | Grain | Key columns |
 |---|---|---|
@@ -124,8 +127,8 @@ demand-forecasting-platform/
 ├── Dockerfile.api             # P0.9 / P0.12
 ├── Dockerfile.dashboard       # P0.10 / P0.12
 ├── .github/workflows/ci.yml  # P0.13
+├── eda/data/                 # gitignored — raw Kaggle download (P0.2; see 3.1)
 ├── data/
-│   ├── raw/                  # gitignored — P0.2
 │   ├── processed/            # gitignored — P0.4
 │   └── README.md             # P0.2, committed
 ├── src/forecasting_platform/
@@ -235,11 +238,11 @@ assumes.
 **Steps:**
 1. Write `data/README.md` documenting: the exact file list and schema from section 3.1 of this
    plan; the date range; **the redistribution constraint** (raw CSVs must never be committed — this
-   repo is public); two ways to populate `data/raw/`:
+   repo is public); two ways to populate `eda/data/store-sales-time-series-forecasting/`:
    - **Kaggle CLI (preferred):** put `KAGGLE_USERNAME`/`KAGGLE_KEY` in `.env`, then
      `uv run python -m forecasting_platform.data.download` (implemented in step 2).
    - **Manual fallback:** download the zip from the competition's Kaggle page by hand, unzip into
-     `data/raw/`.
+     `eda/data/store-sales-time-series-forecasting/`.
 2. In `download.py`, implement `download_kaggle_dataset(dest_dir: Path) -> None`: authenticate via
    the `kaggle` package using env vars from `.env` (loaded via `python-dotenv`), call the
    competition download for `store-sales-time-series-forecasting`, unzip into `dest_dir`. Wrap the
@@ -266,9 +269,9 @@ assumes.
 
 **Definition of Done:**
 - `uv run python -m forecasting_platform.data.download` (with real Kaggle credentials in `.env`)
-  populates `data/raw/` with all 6 files, OR the manual-download fallback in `data/README.md`
+  populates `eda/data/store-sales-time-series-forecasting/` with all 6 files, OR the manual-download fallback in `data/README.md`
   produces the same result.
-- `uv run python -m forecasting_platform.data.validate` against the real `data/raw/` prints "all
+- `uv run python -m forecasting_platform.data.validate` against the real `eda/data/store-sales-time-series-forecasting/` prints "all
   checks passed" plus the series count and zero-inflation summary.
 - `uv run pytest tests/test_data.py` passes using only the synthetic fixture (no real data or
   Kaggle credentials required — this must work in CI).

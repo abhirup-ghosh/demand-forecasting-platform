@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     )
 
     # --- Data locations ---
-    DATA_RAW_DIR: Path = PROJECT_ROOT / "data" / "raw"
+    # Raw Kaggle download lives under eda/data/ (PLAN.md 3.1) — gitignored, never committed.
+    DATA_RAW_DIR: Path = PROJECT_ROOT / "eda" / "data" / "store-sales-time-series-forecasting"
     DATA_PROCESSED_DIR: Path = PROJECT_ROOT / "data" / "processed"
 
     # --- Forecast task definition (PLAN.md section 3.2) ---

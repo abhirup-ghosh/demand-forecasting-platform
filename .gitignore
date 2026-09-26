@@ -1,5 +1,7 @@
 # --- Data (never commit Kaggle data — redistribution violates competition rules) ---
 data/raw/
+eda/data/
+*.zip
 data/processed/
 data/interim/
 *.csv
