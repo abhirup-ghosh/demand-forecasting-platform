@@ -183,7 +183,8 @@ demand-forecasting-platform/
 P0 is the whole deliverable for a "tight portfolio piece": by the end of P0, the platform runs
 end-to-end locally (`docker compose up`) and has one live public demo link. Do the tasks in order —
 later tasks depend on earlier ones' files existing. Each task lists exact files, steps, and a DoD
-you can check by running a command or observing a concrete output.
+you can check by running a command or observing a concrete output. After finishing a task, record an
+**Outcome** block under it (requirements + results/findings) — see section 7.
 
 ### P0.1 — Environment & tooling
 
@@ -222,6 +223,32 @@ you can check by running a command or observing a concrete output.
 - `uv run python -c "from forecasting_platform.config import settings; print(settings.FORECAST_HORIZON)"` prints `28`.
 - `uv run pytest --collect-only` runs without import errors (0 tests collected is fine at this point).
 - `uv run ruff check .` passes with no errors on the skeleton.
+
+
+#### Outcome — P0.1 (completed 2026-09-25)
+
+**Required:** a reproducible `uv`-managed Python ≥3.11 environment and project skeleton —
+`pyproject.toml` (all runtime + dev deps from steps 3–4), a `Makefile` with the 14 listed targets,
+`.env.example` with Kaggle placeholders, and `config.py` exposing a single pydantic-settings
+`settings` object with the listed fields. DoD: the config import prints `28`;
+`pytest --collect-only` has no import errors; `ruff check .` is clean.
+
+**Delivered:**
+- `uv init --package` src-layout project; `requires-python = ">=3.11"`; `uv` resolved Python
+  3.13.5 locally. All deps locked in `uv.lock` (e.g. torch 2.14, statsforecast 2.1, mlforecast 1.1,
+  neuralforecast 3.2, chronos-forecasting 2.3, mlflow 3.16, evidently 0.7). Smoke-imported every
+  heavy library successfully.
+- `config.py`: all required fields; data dirs default to repo-root-relative paths; `.env` loaded
+  with `extra="ignore"` so Kaggle secrets can share the file.
+- `Makefile` with all 14 targets; ruff (line length 100, rules E/F/I/UP/B) + pytest config added
+  to `pyproject.toml`; removed `uv init`'s placeholder `main` entry point.
+
+**Verification:** config import printed `28`; `pytest --collect-only` → 0 tests, no import errors
+(exit 5, allowed by the DoD); `ruff check .` → all checks passed.
+
+**Deviations / handed forward:** P0.4 names no standalone command, so the `features` Makefile target
+assumes `python -m forecasting_platform.features.engineering` — P0.4 must make that module
+runnable (writing to `data/processed/`).
 
 ---
 
@@ -276,6 +303,37 @@ assumes.
 - `uv run pytest tests/test_data.py` passes using only the synthetic fixture (no real data or
   Kaggle credentials required — this must work in CI).
 
+
+#### Outcome — P0.2 (completed 2026-09-26)
+
+**Required:** the real dataset available locally (never committed), a Kaggle-API downloader with a
+clear failure pointing at a manual fallback, a raw-data validator (files, `train.csv` schema/dtypes,
+date range, series count, store referential integrity, all-zero series), a *synthetic* test
+fixture, fixture-only tests, and `data/README.md`. DoD: data populated (API or manual); validator
+prints "all checks passed" + series/zero-inflation summary on real data; `pytest
+tests/test_data.py` passes without real data or credentials.
+
+**Delivered:**
+- Raw-data location moved to `eda/data/store-sales-time-series-forecasting/` (manual download
+  already there); `eda/data/` and `*.zip` gitignored — the original zip was *not* covered by the
+  existing `*.csv` rule and would otherwise have been committable.
+- `download.py` (Kaggle API → unzip; accepts `KAGGLE_USERNAME`/`KAGGLE_KEY` or `KAGGLE_API_TOKEN`;
+  missing creds → one-line error to `data/README.md`, no stack trace), `validate.py`
+  (`validate_train_frame` + `validate_raw_data`, date-range/series-count checks optional for the
+  fixture), `scripts/generate_test_fixture.py` → `tests/fixtures/sample_train.csv` (fully synthetic:
+  3 stores × 3 families × 120 days, weekly pattern, trend, noise, ~5% zeros, promo effect),
+  `tests/test_data.py` (9 tests), `data/README.md`.
+
+**Verification / findings:**
+- Validator on real data: 7 files present (section 3.1's "6 files" counts
+  `test.csv`/`sample_submission.csv` as one row), 3,000,888 rows, 2013-01-01..2017-08-15, all 54
+  stores in `stores.csv`, **1782 series**, **53 structurally all-zero**, **31.3% zero-sales rows**
+  → "all checks passed".
+- `pytest tests/test_data.py` → 9 passed (fixture only).
+- Kaggle API route verified too (`KAGGLE_API_TOKEN` in `.env`): all 7 CSVs downloaded, validated,
+  and byte-identical (sha256) to the manual download. One transient connection drop on the first
+  attempt was reported as "authentication failed" — misleading message, not yet fixed.
+
 ---
 
 ### P0.3 — Exploratory data analysis
@@ -314,6 +372,46 @@ interpretation in `docs/eda-findings.md`:
   completes without error.
 - `docs/eda-findings.md` contains all 8 numbered findings, each with a concrete number or chart
   reference.
+
+
+#### Outcome — P0.3 (completed 2026-09-26)
+
+**Required:** an executable EDA notebook covering 8 named angles, each with one chart and 1–2
+sentences in `docs/eda-findings.md`. DoD: `nbconvert --execute` succeeds; the findings doc has all
+8 numbered findings with concrete numbers or chart references.
+
+**Delivered:** `notebooks/01_eda.ipynb` (prints aggregates only — never raw Kaggle rows, since the
+executed notebook is committed to a public repo), 8 charts in `docs/figures/` (reusable by the
+P0.10 dashboard), `docs/eda-findings.md` with the 8 findings + an "Implications for later tasks"
+list. `matplotlib` added as a direct dependency. Notebook is ruff-clean (CI lints `.ipynb`).
+
+**Verification:** `nbconvert --execute` exit 0 (~13 s); 8 numbered findings present; `ruff check .`
+clean.
+
+**Findings:**
+1. Sales grew 2.18× (385,767 → 841,507 units/day); Sun 1.29× / Sat 1.21× / Thu 0.79× of average;
+   December 1.26×. Every 25 December is absent from `train.csv`.
+2. The 31.3% zeros split into store-closed (8.1%), before-first-sale (11.1% — 12 families record
+   nothing anywhere at first, e.g. BOOKS until 2016-10-08) and genuine zero-while-active (12.2%).
+   12 staple families have no zeros at all once closures are removed; BOOKS 97%, BABY CARE 94%.
+3. Year/weekday-matched holiday effects: observed national holidays median 1.07× (n=47);
+   Additional/Bridge (78% December) 1.54×; `transferred=True` dates 0.92× — confirms they're normal
+   days.
+4. `onpromotion` is all-zero before 2014-04-01. Median within-series Spearman ρ: PRODUCE 0.55,
+   BEVERAGES 0.54 … HARDWARE 0.04 (correlational, not causal).
+5. Store size varies 10.4× (3,545–36,979 units/day); type A median 24,953 vs C 6,584; type D spans
+   almost the full range.
+6. Oil vs sales: level r = −0.79 monthly, but month-over-month changes r = 0.06 — spurious
+   trend-driven correlation, reported as a null result.
+7. Earthquake (2016-04-16): +40–42% nationwide in week 1 (2015 placebo window flat, so not the
+   payday); affected stores (43, 53, 54) then stayed ~1.46–1.49× for two months while the rest
+   returned to ~1.0.
+8. `oil.csv`: 486 absent calendar days (all weekends) + 43 NaN rows incl. the first day → 525 of
+   1,688 train days need imputation; ffill needs a bfill for 2013-01-01.
+
+**Handed forward:** P0.4 — ffill+bfill oil, observed-holiday logic, consider an
+Additional/Bridge flag; P0.4–P0.6 — fill missing 25 Dec, exclude closed days / leading zeros from
+training, forecast the 53 all-zero series as zero; P0.7 — report WAPE by volume band too.
 
 ---
 
@@ -729,6 +827,15 @@ P2 items get lightweight tracking issues too (labeled `P2`) but are not expected
   file's corresponding section — no open question blocks starting it. If a task genuinely can't
   start without a decision only Abhirup can make, that decision belongs in section 8 (Open Decisions)
   below, not silently guessed at.
+- **Outcome summary (required after every task):** once a task's DoD is verified, add an
+  `#### Outcome — <task id> (completed YYYY-MM-DD)` block directly under that task's Definition of
+  Done in this file, before closing its issue. It must give a detailed summary of (a) **what the
+  task required** — goal, files, and each DoD item — and (b) **what was actually delivered and
+  found**: files created/changed, the exact verification commands run and their results (real
+  numbers, not just "passed"), any deviations from the written steps and why, notable findings,
+  and anything handed forward to later tasks. Commit it with the task. The same summary is also
+  given in chat when reporting the task as done. (Added 2026-09-26 at Abhirup's request;
+  backfilled for P0.1–P0.3.)
 - **Definition of done:** the task's Definition of Done in this file is satisfied — a command
   succeeds, an artifact exists, a test passes. Close the GitHub issue when its DoD is met.
 
