@@ -517,6 +517,17 @@ comparisons across tiers are apples-to-apples.
   test window matches the exact dates from section 3.2; each fold's train window contains no dates
   `>= test_start_date`.
 
+#### Outcome — P0.5 (completed 2026-09-26)
+
+**What we did:** `evaluation/backtest.py` — a `Fold` dataclass, `generate_cv_folds` (5 × 28-day
+windows stepping back from the last date, expanding train window, raises if history is too short)
+and `split_train_test` (works on `ds` or raw `date` columns); `tests/test_backtest.py` (6 tests).
+
+**Results:** DoD tests pass (6/6; full suite 27/27). On the real feature frame, folds are
+2017-07-19..08-15 (fold 1 = the section 3.2 holdout), 06-21..07-18, 05-24..06-20, 04-26..05-23,
+03-29..04-25; each test window has 49,896 rows (1782 × 28), train sets shrink by exactly that per
+fold.
+
 ---
 
 ### P0.6 — Model tiers
@@ -882,15 +893,13 @@ P2 items get lightweight tracking issues too (labeled `P2`) but are not expected
   file's corresponding section — no open question blocks starting it. If a task genuinely can't
   start without a decision only Abhirup can make, that decision belongs in section 8 (Open Decisions)
   below, not silently guessed at.
-- **Outcome summary (required after every task):** once a task's DoD is verified, add an
-  `#### Outcome — <task id> (completed YYYY-MM-DD)` block directly under that task's Definition of
-  Done in this file, before closing its issue. It must give a detailed summary of (a) **what the
-  task required** — goal, files, and each DoD item — and (b) **what was actually delivered and
-  found**: files created/changed, the exact verification commands run and their results (real
-  numbers, not just "passed"), any deviations from the written steps and why, notable findings,
-  and anything handed forward to later tasks. Commit it with the task. The same summary is also
-  given in chat when reporting the task as done. (Added 2026-09-26 at Abhirup's request;
-  backfilled for P0.1–P0.3.)
+- **Outcome summary (required after every task):** once a task's DoD is verified, add a
+  **short** `#### Outcome — <task id> (completed YYYY-MM-DD)` block directly under that task's
+  Definition of Done, before closing its issue: **What we did** (a few bullets) and **Results**
+  (the key verification numbers/findings, plus anything handed forward). Keep it brief — more
+  detail only when Abhirup explicitly asks. Commit it with the task; give the same short summary in
+  chat. (Added 2026-09-26; shortened the same day at Abhirup's request — the P0.1–P0.4 blocks
+  predate that and are longer.)
 - **Definition of done:** the task's Definition of Done in this file is satisfied — a command
   succeeds, an artifact exists, a test passes. Close the GitHub issue when its DoD is met.
 
