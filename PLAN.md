@@ -549,6 +549,18 @@ fallback, documented as such.
 **DoD:** returns a correctly-shaped forecast frame for a synthetic series; `uv run pytest
 tests/test_models_baseline.py` (write this alongside) passes.
 
+##### Outcome — P0.6a (completed 2026-09-26)
+
+**What we did:** `models/baseline.py` — `naive` and `seasonal_naive` (m=7), vectorised over all
+series, returning the shared contract (`FORECAST_COLUMNS` in `models/__init__.py`); constant-width
+80% band = z₀.₉ × in-sample residual std, lower bound clipped at 0 (simplification documented).
+`tests/test_models_baseline.py` (7 tests).
+
+**Results:** DoD tests 7/7 (suite 34/34). Sanity run on fold 1 (real data, all 1782 series,
+<0.5 s each): Naive WAPE 26.0%, SeasonalNaive **17.2%** — a strong floor. Raw 80% coverage 81% /
+84%, but inflated by the all-zero series (trivially covered); P0.7 should report coverage
+excluding them.
+
 #### P0.6b — Classical statistical
 **File:** `src/forecasting_platform/models/statistical.py`
 Wrap `statsforecast.StatsForecast` with `models=[AutoARIMA(), AutoETS()]`, `freq="D"`, `n_jobs=-1`.
