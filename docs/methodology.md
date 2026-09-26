@@ -76,9 +76,10 @@ A few things apply to every tier:
   only reflects the models, not differences in how each was tested.
 - **All-zero series** (53 of them) are forecast as zero outside the model tiers. Feeding them
   to the models would only add noise and runtime.
-- **Two kinds of zero are excluded from training:** days a store was closed, and the days before
-  a series first recorded any sales. Neither reflects real demand. The reasons are in
-  `eda-findings.md` §2.
+- **Leading zeros are trimmed before fitting:** the days before a series first recorded any
+  sales (not-yet-recorded, not real demand; this also covers stores' pre-opening periods). Days a
+  store was closed *within* a series' life (mostly 1 January) stay in, because these models need a
+  gap-free daily calendar; they are a small share of rows. The reasons are in `eda-findings.md` §2.
 
 ---
 
@@ -253,8 +254,10 @@ strategy: one model per horizon step, using only lags that are always known (Ben
   error the largest series drive the fit. Two open choices address this:
   - a `log1p` target transform (Open Decision #4, decided empirically in P0.7);
   - scaling each series separately (a known option, not yet specified).
-- **Oil price is only known historically,** so using it for future dates needs future values.
-  Whether to keep it is decided in P0.6c.
+- **Oil price isn't known in advance.** It is kept as a feature, but over the forecast horizon it
+  is **held at its last observed value**. Feeding in the realised future price during backtesting
+  would leak information a real forecaster wouldn't have. Promotions and holidays, by contrast,
+  are planned ahead, so their actual future values are legitimately used.
 - **Tweedie loss is not planned.** A Tweedie loss, which suits zero-inflated sales and was used
   by many M5 solutions, is a natural extension but not part of the current plan.
 
