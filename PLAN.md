@@ -620,6 +620,19 @@ wall-clock time observed — if it's impractically slow on available hardware, t
 finding, not a blocker: fall back to training on a stratified subset and say so explicitly, same as
 the Chronos scoping decision).
 
+##### Outcome — P0.6d (completed 2026-09-26)
+
+**What we did:** `models/deep.py` — `forecast_deep()`: one global NHITS (h=28, input_size=56,
+robust per-window scaling, `max_steps=1000`, univariate), conformal 80% intervals (2 windows),
+CPU (faster than MPS here: 27 vs 52 ms/step). Training budget fixed, not tuned on the folds (fold 1
+is the holdout; tuning is P1.4). Shared zero/short handling via `models/common.py`.
+`tests/test_models_deep.py` (4 tests). methodology.md §1.6 updated.
+
+**Results:** tests 4/4. Fold 1, **full series set — no subset fallback needed: 0.9 min**
+wall-clock, 49,896 rows, contract ok (1696 fitted, 53 zero, 33 short = store 52's families, opened
+2017-04). WAPE **15.4% — best tier so far on fold 1** (AutoETS 15.9%, LightGBM 16.2%, SNaive
+17.2%). 80% coverage 57.4% (under-covers, like the other tiers).
+
 #### P0.6e — Zero-shot foundation model
 **File:** `src/forecasting_platform/models/foundation.py`
 Load `amazon/chronos-bolt-small` via the `chronos-forecasting` package's `BaseChronosPipeline.from_pretrained(...)`.

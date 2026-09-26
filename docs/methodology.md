@@ -304,10 +304,14 @@ with much lower compute. Here it is configured with $h=28$ and an input window o
 - **Sensitive to settings.** Results depend on hyperparameters, and the defaults are used in P0.
   Tuning is P1.4.
 - **Less interpretable** than Tiers 1–2.
-- **May need to be scoped down.** Training time on all series is a real constraint. If it proves
-  impractical on a laptop, the plan falls back to a stratified subset and says so explicitly.
-- **Covariates are optional.** NHITS can accept future-known, past-only and static inputs, but
-  whether to use them is decided in P0.6d.
+- **Runs on the full series set.** Training on all series was feasible: about 1 minute per fold
+  on a laptop CPU, including conformal calibration. (The CPU was faster than the Apple GPU for
+  this small network.) So no subset fallback was needed.
+- **Used without covariates.** NHITS can accept future-known, past-only and static inputs. Here
+  it is kept **univariate** on purpose, learning from the sales history alone. That makes it a
+  clean test of learned structure against Tier 2's engineered features.
+- **Needs enough history per series.** It needs an input window plus calibration windows, so the
+  newest series (store 52, opened April 2017) fall back to seasonal naive in recent folds.
 
 ---
 
