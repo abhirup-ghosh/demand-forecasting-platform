@@ -172,6 +172,7 @@ demand-forecasting-platform/
 │   └── test_api.py            # P0.9
 └── docs/
     ├── eda-findings.md         # P0.3
+    ├── methodology.md          # living doc (added 2026-09-26): theory + rationale, grown section by section
     ├── model-evaluation.md    # P0.15
     └── architecture.md         # P0.15
 ```
