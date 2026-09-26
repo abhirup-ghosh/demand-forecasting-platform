@@ -52,3 +52,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # pandas 2.3 Timestamp/Timedelta arithmetic under numpy 2.4 — upstream, not actionable here.
+    "ignore:The 'generic' unit for NumPy timedelta:DeprecationWarning",
+]

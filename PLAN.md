@@ -439,6 +439,61 @@ for reference by the others.
 **Definition of Done:**
 - `uv run pytest tests/test_features.py` passes, including the explicit leakage test.
 
+#### Outcome — P0.4 (completed 2026-09-26)
+
+**Required:** `build_feature_frame(sales_df, stores_df, oil_df, holidays_df)` returning a
+long-format frame with exactly the 19 listed columns (`unique_id`, `ds`, raw `y`, lags 7/14/28,
+rolling mean 7/28, rolling std 7, `dow`, `month`, national/regional/local holiday flags with the
+`transferred` nuance, `onpromotion`, forward-filled `oil_price`, `store_type`, `store_cluster`,
+`family`); raw `y` only (log1p is Open Decision #4, settled in P0.7); an explicit
+no-lookahead-leakage test. DoD: `uv run pytest tests/test_features.py` passes, including the
+leakage test.
+
+**Delivered:**
+- `src/forecasting_platform/features/engineering.py`: `build_feature_frame` + a `__main__` that
+  writes `data/processed/features.parquet` (makes the P0.1 `make features` target work).
+  Design choices, each documented in the module docstring:
+  - Every series is reindexed to a **complete daily calendar** (the missing 25 Decembers become
+    `y = 0`, `onpromotion = 0` rows), so a k-row lag is exactly a k-day lag.
+  - Rolling windows are computed on `y` shifted by one day: nothing at `D` uses `ds >= D`.
+  - Holidays count on their **observed** date: `Holiday`/`Transfer`/`Additional`/`Bridge` with
+    `transferred == False`. `transferred == True` rows are normal days; `Work Day`/`Event` are not
+    holidays. Regional holidays match `stores.state`, local ones `stores.city`; duplicate rows
+    de-duplicated.
+  - Oil is forward-filled plus a back-fill for the leading 2013-01-01 value only.
+- `tests/test_features.py` (12 tests, synthetic data only): exact columns/shape; missing-date fill;
+  lag_7/14/28 equal `y` at D−k looked up **by date**; a perturbation leakage test (multiplying
+  every `y` with `ds >= D` changes no target-derived feature at `D`, for 4 cutoffs); rolling
+  windows vs hand computation; transferred/Transfer/Bridge/Work Day/Event holiday logic;
+  regional/local store matching; oil fill; static/calendar columns.
+- `pyproject.toml`: pytest filter for an upstream pandas 2.3 × numpy 2.4 timedelta
+  DeprecationWarning.
+
+**Verification:**
+- `uv run pytest tests/test_features.py` → 12 passed; full suite 21 passed; ruff clean.
+- `make features` on real data → 3,008,016 rows × 19 columns (exactly 1782 series × 1688 days) in
+  ~6 s, 61 MB parquet (gitignored). NaNs only in lag/rolling warm-up rows (e.g. `lag_28`: 49,896 =
+  1782 × 28). All 7,128 filled 25-Dec rows have `y = 0`. 82 national-holiday days. On the real
+  file, all 7 in-range `transferred == True` dates are flagged `False` and all 7 `Transfer` dates
+  `True`. `lag_7`/`rolling_mean_7` hand-checked on a real series (`1_GROCERY I`, 2016-06-15).
+
+**Deviations / issues:**
+- No extra columns were added beyond the specified 19. Additional/Bridge days are folded into
+  `is_national_holiday` even though P0.3 measured them at 1.54× vs 1.07× for the holiday itself;
+  a separate flag is a candidate follow-up if P0.7's backtest shows holiday-period errors.
+- Environment issue hit and fixed: macOS had set the `hidden` file flag on `.venv` (including
+  `forecasting_platform.pth`), and Python 3.13 silently skips hidden `.pth` files, so the package
+  stopped importing. Fixed with `chflags -R nohidden .venv`; it did not recur on reinstall. If
+  `ModuleNotFoundError: forecasting_platform` ever reappears, that's the fix.
+
+**Handed forward:**
+- P0.5/P0.6: store-closed days, leading not-yet-recorded zeros and the 53 all-zero series are
+  still *in* the frame (it is a complete grid by design). Excluding them from training / forecasting
+  all-zero series as zero is a modelling-side step.
+- P0.6c: `lag_7`/`lag_14` are only known for the first 7/14 days of a 28-day horizon, so the ML
+  tier needs recursive lags (mlforecast's default) or horizon-safe lags. `oil_price` is
+  same-day exogenous and would need future values at forecast time; decide there whether to use it.
+
 ---
 
 ### P0.5 — Backtesting framework
