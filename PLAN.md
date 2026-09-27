@@ -633,6 +633,12 @@ wall-clock, 49,896 rows, contract ok (1696 fitted, 53 zero, 33 short = store 52'
 2017-04). WAPE **15.4% — best tier so far on fold 1** (AutoETS 15.9%, LightGBM 16.2%, SNaive
 17.2%). 80% coverage 57.4% (under-covers, like the other tiers).
 
+**Fix after closing:** PyTorch and LightGBM in one process crashed (segfault, torch first) or
+deadlocked (LightGBM first) — two OpenMP runtimes on macOS; env-var workarounds didn't help. NHITS
+now trains in a spawned child process (`forecasting_platform/isolation.py`, `run_isolated`) and
+torch is only imported there; regression test added. Full suite 51/51 in either order; real-data
+result unchanged (15.4%, 1.0 min). **P0.6e (Chronos, also torch) must use the same pattern.**
+
 #### P0.6e — Zero-shot foundation model
 **File:** `src/forecasting_platform/models/foundation.py`
 Load `amazon/chronos-bolt-small` via the `chronos-forecasting` package's `BaseChronosPipeline.from_pretrained(...)`.

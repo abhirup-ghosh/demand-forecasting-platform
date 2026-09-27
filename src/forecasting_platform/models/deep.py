@@ -14,6 +14,9 @@ Configuration choices:
 - **CPU**: measured faster than Apple-MPS for this small network (27 vs 52 ms/step).
 - **Intervals:** conformal (``PredictionIntervals``, 2 windows; neuralforecast retrains during
   calibration, roughly doubling cost).
+- **Process isolation:** training runs in a spawned child process and ``neuralforecast``/``torch``
+  are imported only there, because PyTorch's and LightGBM's OpenMP runtimes crash or deadlock when
+  loaded in the same process on macOS (see ``forecasting_platform.isolation``).
 
 All-zero / leading-zero / too-short series are handled by ``models.common``.
 """
@@ -22,11 +25,9 @@ import logging
 import warnings
 
 import pandas as pd
-from neuralforecast import NeuralForecast
-from neuralforecast.models import NHITS
-from neuralforecast.utils import PredictionIntervals
 
 from forecasting_platform.config import settings
+from forecasting_platform.isolation import run_isolated
 from forecasting_platform.models.common import fallback_forecasts, finalize, split_series
 
 logger = logging.getLogger(__name__)
@@ -43,13 +44,30 @@ def forecast_deep(
     max_steps: int = MAX_STEPS,
     seed: int = settings.RANDOM_SEED,
     accelerator: str = "cpu",
+    isolate: bool = True,
 ) -> pd.DataFrame:
     """Global NHITS forecasts for every series in ``train_df`` (long format, contract cols).
 
-    ``input_size`` defaults to ``2 * horizon`` (56 days for the 28-day task).
+    ``input_size`` defaults to ``2 * horizon`` (56 days for the 28-day task). With ``isolate=True``
+    (default) training runs in a spawned child process — see the module docstring.
     """
+    args = (train_df[["unique_id", "ds", "y"]], horizon, input_size, max_steps, seed, accelerator)
+    return run_isolated(_forecast_deep, *args) if isolate else _forecast_deep(*args)
+
+
+def _forecast_deep(
+    df: pd.DataFrame,
+    horizon: int,
+    input_size: int | None,
+    max_steps: int,
+    seed: int,
+    accelerator: str,
+) -> pd.DataFrame:
+    from neuralforecast import NeuralForecast
+    from neuralforecast.models import NHITS
+    from neuralforecast.utils import PredictionIntervals
+
     input_size = input_size or 2 * horizon
-    df = train_df[["unique_id", "ds", "y"]]
     split = split_series(df, CONFORMAL_WINDOWS * horizon + input_size)
     logger.info("deep tier (%s): %s", MODEL_NAME, split.summary())
 

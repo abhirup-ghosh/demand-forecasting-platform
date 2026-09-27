@@ -55,3 +55,11 @@ def test_forecasts_on_series_scale(forecast: pd.DataFrame, train: pd.DataFrame) 
     fitted = forecast[forecast["unique_id"] != "zero"].groupby("unique_id")["yhat"].mean()
     ratio = fitted / recent.loc[fitted.index]
     assert np.all((ratio > 0.5) & (ratio < 1.5))
+
+
+def test_torch_never_loaded_in_calling_process(forecast: pd.DataFrame) -> None:
+    """Regression: PyTorch and LightGBM OpenMP runtimes crash/deadlock in one process on macOS,
+    so NHITS must train in a spawned child and never import torch here."""
+    import sys
+
+    assert "torch" not in sys.modules
