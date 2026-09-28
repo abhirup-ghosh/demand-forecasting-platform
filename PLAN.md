@@ -650,6 +650,25 @@ columns).
 and later in `docs/model-evaluation.md` that this tier's series scope is intentionally narrower than
 the others.
 
+##### Outcome — P0.6e (completed 2026-09-28)
+
+**What we did:** `models/foundation.py` — `forecast_foundation()`: zero-shot
+`amazon/chronos-bolt-small` (no fine-tuning), context = each series' history after leading zeros
+(≤2048 days), 10/50/90% quantiles → contract; `select_chronos_sample()` = top/middle/bottom 20 by
+volume, all-zero excluded; `series_ids` param so P0.7 can fix **one sample for all folds** (chosen
+from the oldest fold's training data). Narrower scope documented in the module docstring.
+Runs isolated. **`isolation.py` rewritten:** `multiprocessing` spawn re-imports the calling script's
+top-level imports in the child (so LightGBM still met torch there and the child crashed); the child
+is now `python -m forecasting_platform.isolation` with pickle files in/out and `src/` on its
+`PYTHONPATH`. `tests/test_models_foundation.py` (4; the real-model one skips if the model isn't
+cached, e.g. CI) + `tests/test_isolation.py` (2).
+
+**Results:** full suite 57/57. Fold 1, fixed 60-series sample: **6 s wall-clock incl. model load,
+0.7 s inference**, 1,680 rows, contract ok. On the same 60 series — WAPE: NHITS 11.8%, **Chronos
+12.4%**, SeasonalNaive 13.2%, LightGBM 14.2%; 80% coverage: **Chronos 84.6%** (best calibrated),
+NHITS 48%, LightGBM 61%. Bottom-20 (tiny) series: LightGBM WAPE **4,893%** — raw-target global model
+leaks big-series scale into near-zero series; P0.7's log1p test is the obvious remedy.
+
 ---
 
 ### P0.7 — Evaluation & business cost

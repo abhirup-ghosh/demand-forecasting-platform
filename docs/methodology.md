@@ -355,10 +355,13 @@ series and random mixtures of real ones) to improve generalisation.
   holiday inputs. That is a real handicap on this data, and exactly the kind of trade-off the
   comparison is meant to expose. (Later Chronos releases add covariate support; this project
   uses Bolt, as the plan specifies.)
-- **Run on a 60-series sample.** To keep inference time reasonable on a laptop, this tier runs
-  on a **stratified sample of 60 series**: the top, middle and bottom 20 by volume. This is a
-  deliberate scoping choice, not a limitation of the method, and its scores are compared with
-  the other tiers *on the same 60 series*.
+- **Run on a 60-series sample.** The plan runs this tier on a **stratified sample of 60
+  series**: the top, middle and bottom 20 by volume, all-zero series excluded. The sample is
+  chosen once, from the oldest backtest fold's training data, and reused for every fold. Its
+  scores are compared with the other tiers *on the same 60 series*. The sample was planned to
+  keep laptop inference time reasonable. In practice Chronos-Bolt-Small forecast all 60 series
+  in under a second, so the restriction turned out to be a scoping choice rather than a
+  computational necessity.
 - **Quality depends on pre-training.** A zero-shot model's accuracy depends on how well its
   pre-training corpus resembles our data, which we can't inspect or control.
 
