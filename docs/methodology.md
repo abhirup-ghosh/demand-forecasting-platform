@@ -5,8 +5,8 @@ behind it, and why it was chosen. It grows one section at a time as the project 
 
 | Section | Status |
 |---|---|
-| [1. Forecasting models](#1-forecasting-models) | Design written; implementation in progress (PLAN.md P0.6a–e) |
-| Backtesting & evaluation | Planned — the fold design exists (P0.5); metrics come with P0.7 |
+| [1. Forecasting models](#1-forecasting-models) | Implemented (PLAN.md P0.6a–e) |
+| [2. Backtesting & evaluation](#2-backtesting--evaluation) | Implemented (PLAN.md P0.5, P0.7) |
 | Feature engineering | Planned — implemented in P0.4, write-up to follow |
 
 Related documents: [`eda-findings.md`](./eda-findings.md) (the data facts this design responds
@@ -415,6 +415,60 @@ across the 5 folds wins**, with the naive baselines excluded as candidates (PLAN
 5. **Coverage falls short of 80% during regime shifts,** for every interval method.
 
 Results — confirming or overturning these — will be reported in `model-evaluation.md`.
+
+---
+
+## 2. Backtesting & evaluation
+
+### 2.1 Rolling-origin backtest
+
+A single train/test split can be unusually easy or hard. Every model is therefore scored on
+**five 28-day test windows**. They step backward from the end of the data (fold 1 =
+2017-07-19..2017-08-15, the final holdout; fold 5 = 2017-03-29..2017-04-25). Each window's
+training set is **everything before it** (an expanding window), which mirrors how a forecaster
+works in practice: always using all history available up to that point. All tiers use the same
+folds, the same series, and the same test rows, so differences between them come from the
+models, not the evaluation. Forecasts are made once per fold for the whole 28-day horizon; no
+test-window actuals are ever seen (enforced by tests for the ML tier's exogenous inputs).
+
+The five windows cover March–August 2017, so they measure "normal-season" accuracy. They
+contain no December peak, and the evaluation says so rather than extrapolating.
+
+### 2.2 Metrics
+
+| Metric | What it answers | Notes |
+|---|---|---|
+| **WAPE** (headline) | What share of total sales volume did the forecast miss? $\sum\lvert y-\hat y\rvert / \sum y$ | Well defined with zero sales; weights errors by volume, which matches business impact |
+| WAPE by volume band | Is accuracy uniform across big and small series? | Non-zero series split into terciles (top / middle / bottom) by training volume |
+| MAPE | Average per-row % error | Only over non-zero actuals; unstable on tiny values, so reported but never led with |
+| RMSE | Typical error size in units | Dominated by high-volume series |
+| Pinball loss | How good is the whole predicted distribution? | Mean quantile loss over the 10/50/90% forecasts; rewards ranges that are both honest and tight |
+| Interval coverage | Do the 80% ranges contain the actual value ~80% of the time? | Computed excluding always-zero series, which a zero-width range "covers" trivially |
+
+### 2.3 Business cost
+
+Forecast error is converted into cost with an asymmetric linear loss:
+
+$$\text{cost} = \sum_t \big( c_u \max(0,\, y_t-\hat y_t) + c_o \max(0,\, \hat y_t - y_t) \big)$$
+
+- $c_u$ is the cost per unit of under-forecast: a stock-out and lost sale.
+- $c_o$ is the cost per unit of over-forecast: holding cost and waste.
+
+The default $c_u : c_o = 3:1$ is **illustrative**, an assumption typical of perishable grocery,
+not a figure fitted from the retailer's financials. The right ratio is a business decision, so
+the dashboard exposes it as a slider.
+
+This metric can disagree with WAPE. WAPE treats both directions of error equally, while an
+asymmetric cost rewards a model that errs on the high side. Under pure linear-loss theory, the
+cost-minimising forecast is the $c_u/(c_u+c_o)$ = 75th percentile of the demand distribution,
+not the median. So a model with slightly worse WAPE can be the cheaper one to run.
+
+### 2.4 Experiment tracking
+
+Each (model, fold) pair is logged as an MLflow run: its parameters, every metric above, runtime,
+and a forecast-vs-actual plot for a high-volume and a mid-volume series. The same numbers go to
+`results/leaderboard.csv`, one row per (model, fold), which feeds champion selection (P0.8) and
+the dashboard.
 
 ---
 

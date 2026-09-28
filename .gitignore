@@ -35,6 +35,13 @@ uv.lock.bak
 mlruns/
 mlartifacts/
 *.mlflow
+mlruns.db
+
+# --- Backtest outputs: cached forecasts are regenerable; the leaderboard (aggregate metrics
+# only, no Kaggle rows) is committed for the README/dashboard ---
+results/forecasts/
+results/*.log
+!results/leaderboard.csv
 
 # --- Model artifacts (large binaries; document how to regenerate instead) ---
 artifacts/

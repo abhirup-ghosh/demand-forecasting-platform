@@ -709,6 +709,34 @@ error into a business-framed cost.
 - `uv run mlflow ui --backend-store-uri sqlite:///mlruns.db` shows all the logged runs with their
   metrics.
 
+#### Outcome — P0.7 (completed 2026-09-28)
+
+**What we did:** `evaluation/metrics.py` (WAPE, MAPE on non-zero actuals, RMSE, pinball loss over
+10/50/90%, coverage, and `score_forecast` with per-volume-band WAPE and coverage excluding
+all-zero series), `evaluation/business_cost.py` (3:1 illustrative), `scripts/run_backtest.py` (5
+folds × 8 models incl. LightGBM raw + log1p; cached forecasts → resumable; leaderboard + one MLflow
+run per (model, fold) with a forecast-vs-actual plot), `tests/test_metrics.py` (8).
+`results/leaderboard.csv` is committed (aggregate metrics only); forecasts, `mlruns.db` and logs
+are gitignored. methodology.md §2 (backtesting & evaluation) written.
+
+**Results:** full backtest ~40 min. Leaderboard 40 rows (8 × 5); MLflow UI serves all 40 runs
+(2 smoke-test duplicates removed). Mean over folds:
+
+| Model | WAPE | ±sd | 80% coverage | Pinball | 3:1 cost |
+|---|---|---|---|---|---|
+| **NHITS** | **14.1%** | 1.7 | 61% | 25.3 | **6.78M** |
+| ChronosBolt-base | 14.6% | 1.1 | **81%** | **23.8** | 7.66M |
+| LightGBM_log1p | 15.2% | 1.1 | 61% | 26.7 | 7.71M |
+| AutoETS | 15.3% | 1.2 | 62% | 27.3 | 7.89M |
+| LightGBM | 15.8% | 1.1 | 60% | 27.5 | 7.50M |
+| SeasonalNaive | 17.5% | 0.6 | 82% | 31.0 | 9.00M |
+| AutoARIMA | 17.9% | 1.4 | 62% | 30.4 | 8.47M |
+| Naive | 28.2% | 1.9 | 78% | 47.8 | 17.10M |
+
+Open Decision #4 resolved (log1p). All conformal tiers under-cover (~61%); only Chronos is
+calibrated. AutoARIMA is worse than SeasonalNaive on average. Pre-registered expectation #1
+(LightGBM wins) is **refuted**: global deep and foundation models lead.
+
 ---
 
 ### P0.8 — Model selection & final artifact
@@ -1015,8 +1043,12 @@ Things intentionally left unresolved — don't guess at these, resolve them the 
    written in P0.14 step 2 — but double-check Kaggle's current competition rules text for this
    specific competition before publishing anything derived-model-related publicly, since rules text
    can vary by competition and can change over time.
-4. **`log1p` vs raw target transform for feature engineering (P0.4).** Decide empirically during
-   P0.7 by comparing backtest WAPE with/without on the ML tier; do not fix this in advance.
+4. **`log1p` vs raw target transform for feature engineering (P0.4).** ~~Decide empirically during
+   P0.7 by comparing backtest WAPE with/without on the ML tier; do not fix this in advance.~~
+   **Resolved 2026-09-28 (P0.7 backtest): `log1p` for the ML tier.** Mean WAPE 15.2% vs 15.8% raw,
+   better in 4 of 5 folds, and far better on small series (bottom-volume-band WAPE 49.5% vs 70.1%).
+   Caveat: raw had the lower 3:1 business cost (7.50M vs 7.71M), since log-space fitting biases
+   forecasts low, and under-forecasting costs 3×. Other tiers are unaffected.
 5. **Business cost ratio (3:1 under:over, P0.7).** Illustrative default only. Since it's exposed as a
    live dashboard slider (P0.10), there's no need to "get it right" upfront — Abhirup or a viewer can
    adjust it interactively.
