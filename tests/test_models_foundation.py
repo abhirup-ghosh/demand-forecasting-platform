@@ -1,8 +1,8 @@
 """Tests for the Chronos-Bolt tier.
 
-The pure-numpy parts are always tested. The real-model test downloads/loads
-``amazon/chronos-bolt-small`` in an isolated process and is skipped when the model isn't in the
-local Hugging Face cache (e.g. in CI).
+The pure-numpy parts are always tested. The real-model test loads ``amazon/chronos-bolt-small``
+(the smallest variant is enough to exercise the pipeline) in an isolated process and is skipped
+when that model isn't in the local Hugging Face cache (e.g. in CI).
 """
 
 from pathlib import Path
@@ -15,6 +15,7 @@ from forecasting_platform.models import FORECAST_COLUMNS
 from forecasting_platform.models.foundation import (
     MODEL_NAME,
     forecast_foundation,
+    model_name_for,
     prepare_contexts,
     quantiles_to_contract,
     select_chronos_sample,
@@ -71,10 +72,17 @@ def test_quantiles_map_to_contract() -> None:
     assert set(fc["model_name"]) == {MODEL_NAME}
 
 
+def test_model_name_records_size() -> None:
+    assert model_name_for("amazon/chronos-bolt-base") == "ChronosBolt-base"
+    assert model_name_for("amazon/chronos-bolt-small") == "ChronosBolt-small"
+
+
 @pytest.mark.skipif(not MODEL_CACHED, reason="chronos-bolt-small not in the local HF cache")
 def test_real_model_zero_shot(train: pd.DataFrame) -> None:
-    fc = forecast_foundation(train, horizon=H, series_ids=sorted(train["unique_id"].unique()))
+    # Default scope: every series in train_df (no series_ids).
+    fc = forecast_foundation(train, horizon=H, model_id="amazon/chronos-bolt-small")
     assert list(fc.columns) == FORECAST_COLUMNS and len(fc) == 9 * H
+    assert set(fc["model_name"]) == {"ChronosBolt-small"}
     assert not fc.isna().any().any()
     assert (fc["yhat_lo80"] <= fc["yhat"] + 1e-6).all() and (
         fc["yhat"] <= fc["yhat_hi80"] + 1e-6

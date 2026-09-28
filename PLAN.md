@@ -96,12 +96,11 @@ not exist or may be structurally all-zero, e.g. a family never stocked at a give
 - **Target:** daily `sales`, per `(store_nbr, family)` series.
 - **Horizon:** 28 days (4 weeks) — matches the original brief.
 - **Granularity:** daily.
-- **Series scope:** all ~1782 `(store_nbr, family)` series for the naive/statistical/ML/deep tiers
-  (these libraries are built for exactly this scale). The Chronos zero-shot tier is run on a
-  **stratified sample of 60 series** (top 20 by total volume, middle 20, bottom 20 excluding
-  structurally-all-zero series) — an explicit, documented scoping decision to keep zero-shot
-  inference runtime reasonable on a laptop, not a limitation of the method. State this plainly in
-  `docs/model-evaluation.md` so it doesn't read as a shortcut.
+- **Series scope:** all 1782 `(store_nbr, family)` series for **every** tier. (Originally the
+  Chronos zero-shot tier was planned on a stratified 60-series sample to save laptop compute; P0.6e
+  measured inference at under 1 s for 60 series, so on 2026-09-28 Abhirup chose to run it on all
+  series too, so that it competes for champion on equal terms. The sampling helper remains for
+  analyses.)
 - **Final holdout (matches "next 4 weeks"):** train on everything before **2017-07-19**, evaluate on
   **2017-07-19 .. 2017-08-15** (the last 28 days of available data).
 - **Backtesting beyond the single holdout:** additionally run **5-fold rolling-origin
@@ -669,6 +668,13 @@ cached, e.g. CI) + `tests/test_isolation.py` (2).
 NHITS 48%, LightGBM 61%. Bottom-20 (tiny) series: LightGBM WAPE **4,893%** — raw-target global model
 leaks big-series scale into near-zero series; P0.7's log1p test is the obvious remedy.
 
+**Revision (2026-09-28, Abhirup's decision):** Chronos now runs on **all series** (section 3.2) and
+defaults to **Chronos-Bolt-Base** (Open Decision #2 resolved); inference batched (256 series);
+model name records the size (`ChronosBolt-base`). Fold 1, all 1782 series: **Base WAPE 14.7%,
+coverage 80.8%, 23 s inference** (111 s wall incl. first download); Small 15.4% / 79.9% / 6 s.
+Base is the **best tier on fold 1** (NHITS 15.4%, AutoETS 15.9%, LightGBM 16.2%) and the only one
+with near-nominal 80% coverage.
+
 ---
 
 ### P0.7 — Evaluation & business cost
@@ -692,7 +698,7 @@ error into a business-framed cost.
    fitted from Favorita's real financials — and that it's exposed as an adjustable dashboard control
    (P0.10) precisely because the "right" ratio is a business input, not a data-science one.
 3. In `scripts/run_backtest.py`, orchestrate: for each of the 5 folds (P0.5) × each model tier
-   (P0.6a–e, Chronos only on its subset), fit/predict, compute all metrics + business cost, write one
+   (P0.6a–e, all on all series — see section 3.2), fit/predict, compute all metrics + business cost, write one
    row per `(model, fold)` to `results/leaderboard.csv`, and log the same as an MLflow run (params:
    `model`, `fold`; metrics: `wape`, `rmse`, `pinball_loss`, `interval_coverage`, `business_cost`;
    artifact: a forecast-vs-actual plot for a couple of representative series).
@@ -1001,8 +1007,10 @@ Things intentionally left unresolved — don't guess at these, resolve them the 
 
 1. **NHITS vs PatchTST for the deep-learning tier.** Default is NHITS (P0.6d); switch only if P1.5's
    head-to-head shows PatchTST is clearly better, not on a hunch.
-2. **Chronos-Bolt-Small vs -Base.** Start with Small (CPU-friendly, faster). Revisit Base only if
-   P0.6e's observed runtime leaves headroom.
+2. **Chronos-Bolt-Small vs -Base.** ~~Start with Small (CPU-friendly, faster). Revisit Base only if
+   P0.6e's observed runtime leaves headroom.~~ **Resolved 2026-09-28: Base.** P0.6e measured <1 s
+   inference for 60 series with Small, leaving ample headroom; Abhirup chose Base (default
+   `CHRONOS_MODEL_ID`). Small remains selectable via `model_id`.
 3. **Committing a trained model artifact into the HF Space repo for P0.14.** Recommended approach as
    written in P0.14 step 2 — but double-check Kaggle's current competition rules text for this
    specific competition before publishing anything derived-model-related publicly, since rules text

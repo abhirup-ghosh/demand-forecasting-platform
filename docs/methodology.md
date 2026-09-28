@@ -66,8 +66,8 @@ make fewer assumptions baked in.
 | 0 | Naive, seasonal naive | local | no (a rule, not a fit) | no | crude constant band |
 | 1 | AutoARIMA, AutoETS | local | yes, 1 model per series | no | conformal |
 | 2 | LightGBM via `mlforecast` | **global** | yes, 1 model for all | **yes** | conformal |
-| 3 | NHITS via `neuralforecast` | **global** | yes, 1 model for all | optional | set in P0.6d |
-| 4 | Chronos-Bolt-Small | **global (pre-trained)** | **no, zero-shot** | no | native quantiles |
+| 3 | NHITS via `neuralforecast` | **global** | yes, 1 model for all | no (univariate) | conformal |
+| 4 | Chronos-Bolt-Base | **global (pre-trained)** | **no, zero-shot** | no | native quantiles |
 
 A few things apply to every tier:
 
@@ -315,7 +315,7 @@ with much lower compute. Here it is configured with $h=28$ and an input window o
 
 ---
 
-### 1.7 Tier 4 — Zero-shot foundation model (Chronos-Bolt-Small)
+### 1.7 Tier 4 — Zero-shot foundation model (Chronos-Bolt-Base)
 
 **The idea.** Train one large model on a big and varied corpus of *other* time series, then
 forecast new series **with no training on them at all** ("zero-shot"). It is the time-series
@@ -335,8 +335,10 @@ series and random mixtures of real ones) to improve generalisation.
 - The input history is split into **patches** (short chunks) for a T5 encoder.
 - The decoder **directly outputs several quantiles for many future steps at once**, trained with
   quantile loss, instead of sampling tokens one step at a time.
-- As a result it is much faster and more accurate than the original Chronos, and the
-  *Small* model (~48M parameters) runs acceptably on CPU.
+- As a result it is much faster and more accurate than the original Chronos, and it runs
+  comfortably on a laptop CPU. The plan started with the *Small* model (~48M parameters). It was
+  so fast (under a second for 60 series) that the project switched to the larger *Base* model
+  (~205M parameters), which remains practical on CPU.
 - Its quantile outputs map straight onto our output format: median → `yhat`, 10th/90th
   percentiles → the 80% interval.
 
@@ -355,13 +357,10 @@ series and random mixtures of real ones) to improve generalisation.
   holiday inputs. That is a real handicap on this data, and exactly the kind of trade-off the
   comparison is meant to expose. (Later Chronos releases add covariate support; this project
   uses Bolt, as the plan specifies.)
-- **Run on a 60-series sample.** The plan runs this tier on a **stratified sample of 60
-  series**: the top, middle and bottom 20 by volume, all-zero series excluded. The sample is
-  chosen once, from the oldest backtest fold's training data, and reused for every fold. Its
-  scores are compared with the other tiers *on the same 60 series*. The sample was planned to
-  keep laptop inference time reasonable. In practice Chronos-Bolt-Small forecast all 60 series
-  in under a second, so the restriction turned out to be a scoping choice rather than a
-  computational necessity.
+- **Runs on all series.** The plan originally restricted this tier to a stratified sample of 60
+  series (the top, middle and bottom 20 by volume) to save laptop compute. In practice inference
+  took under a second for 60 series, so it runs on all 1782 series like every other tier and
+  competes for champion on equal terms. All-zero series are forecast as zero, as elsewhere.
 - **Quality depends on pre-training.** A zero-shot model's accuracy depends on how well its
   pre-training corpus resembles our data, which we can't inspect or control.
 
@@ -370,7 +369,7 @@ series and random mixtures of real ones) to improve generalisation.
 ### 1.8 Prediction intervals: conformal prediction
 
 A point forecast alone can't support a stocking decision. The planner also needs to know how
-wrong it might be. Tiers 1–2 produce their 80% intervals with **conformal prediction** (Vovk et
+wrong it might be. Tiers 1–3 produce their 80% intervals with **conformal prediction** (Vovk et
 al., 2005), adapted to forecasting:
 
 1. Run the model on several historical calibration windows (rolling-origin, like the backtest)
@@ -408,7 +407,8 @@ across the 5 folds wins**, with the naive baselines excluded as candidates (PLAN
    intermittent ones.
 3. **Zero-shot is surprisingly competitive, but no winner.** Chronos-Bolt is expected to beat the
    seasonal-naive floor clearly on its 60-series sample, without matching the covariate-aware
-   global models.
+   global models. *(Kept as originally written. Since then the tier's scope changed to all series
+   and Chronos-Bolt-Base; the evaluation tests the expectation on that scope.)*
 4. **Every tier fails on intermittent series.** For families like BOOKS or BABY CARE (over 90%
    zeros), point-forecast error metrics are expected to be near-meaningless for all tiers. That
    points to a different framing (will it sell at all?) rather than a better regressor.

@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     MLFLOW_TRACKING_URI: str = "sqlite:///mlruns.db"
 
     # --- Zero-shot foundation model tier (PLAN.md P0.6e) ---
-    CHRONOS_MODEL_ID: str = "amazon/chronos-bolt-small"
+    # Base, not Small: Open Decision #2 resolved 2026-09-28 (ample runtime headroom).
+    CHRONOS_MODEL_ID: str = "amazon/chronos-bolt-base"
+    # Only used by select_chronos_sample(); the tier itself now runs on all series.
     CHRONOS_SERIES_SAMPLE_SIZE: int = 60
 
     # --- Business cost model (PLAN.md P0.7) — illustrative 3:1 under:over default ---
