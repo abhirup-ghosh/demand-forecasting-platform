@@ -57,3 +57,6 @@ artifacts/
 
 # --- Monitoring/report outputs (regenerable) ---
 reports/generated/
+
+# --- Claude Code (personal, per-machine permission rules) ---
+.claude/settings.local.json
