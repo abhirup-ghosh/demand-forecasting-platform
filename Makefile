@@ -1,4 +1,8 @@
 # One-line wrappers over the `uv run ...` commands specified per task in PLAN.md.
+
+# Import the package from src/ even if macOS flags the editable-install .pth "hidden" (Python 3.13
+# then skips it; see PLAN.md P0.4/P0.6b Outcomes). Harmless everywhere else.
+export PYTHONPATH := $(CURDIR)/src$(if $(PYTHONPATH),:$(PYTHONPATH))
 .PHONY: setup data validate-data eda features backtest train-final api dashboard drift-report test lint docker-up docker-down
 
 setup:          ## Create/sync the virtualenv from uv.lock (P0.1)

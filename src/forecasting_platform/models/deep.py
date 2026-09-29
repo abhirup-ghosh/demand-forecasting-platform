@@ -63,6 +63,26 @@ def _forecast_deep(
     seed: int,
     accelerator: str,
 ) -> pd.DataFrame:
+    nf, split = fit_deep(df, horizon, input_size, max_steps, seed, accelerator)
+    frames = fallback_forecasts(df, split, horizon, MODEL_NAME)
+    if nf is not None:
+        frames.append(predict_deep(nf))
+    return finalize(frames)
+
+
+def fit_deep(
+    df: pd.DataFrame,
+    horizon: int = settings.FORECAST_HORIZON,
+    input_size: int | None = None,
+    max_steps: int = MAX_STEPS,
+    seed: int = settings.RANDOM_SEED,
+    accelerator: str = "cpu",
+):
+    """Fit NHITS in the *current* process; returns (NeuralForecast or None, SeriesSplit).
+
+    Imports torch here — only call it in a process that never loads LightGBM (see module doc).
+    ``nf`` is None when no series is long enough to fit.
+    """
     from neuralforecast import NeuralForecast
     from neuralforecast.models import NHITS
     from neuralforecast.utils import PredictionIntervals
@@ -70,37 +90,38 @@ def _forecast_deep(
     input_size = input_size or 2 * horizon
     split = split_series(df, CONFORMAL_WINDOWS * horizon + input_size)
     logger.info("deep tier (%s): %s", MODEL_NAME, split.summary())
+    if split.fit_df.empty:
+        return None, split
+    model = NHITS(
+        h=horizon,
+        input_size=input_size,
+        max_steps=max_steps,
+        scaler_type="robust",
+        random_seed=seed,
+        accelerator=accelerator,
+        enable_progress_bar=False,
+        enable_model_summary=False,
+        logger=False,
+    )
+    nf = NeuralForecast(models=[model], freq="D")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # Lightning's dataloader/worker advisories
+        nf.fit(split.fit_df, prediction_intervals=PredictionIntervals(n_windows=CONFORMAL_WINDOWS))
+    return nf, split
 
-    frames = fallback_forecasts(df, split, horizon, MODEL_NAME)
-    if not split.fit_df.empty:
-        model = NHITS(
-            h=horizon,
-            input_size=input_size,
-            max_steps=max_steps,
-            scaler_type="robust",
-            random_seed=seed,
-            accelerator=accelerator,
-            enable_progress_bar=False,
-            enable_model_summary=False,
-            logger=False,
-        )
-        nf = NeuralForecast(models=[model], freq="D")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # Lightning's dataloader/worker advisories
-            nf.fit(
-                split.fit_df, prediction_intervals=PredictionIntervals(n_windows=CONFORMAL_WINDOWS)
-            )
-            fc = nf.predict(level=[80])
-        frames.append(
-            pd.DataFrame(
-                {
-                    "unique_id": fc["unique_id"],
-                    "ds": fc["ds"],
-                    "model_name": MODEL_NAME,
-                    "yhat": fc[MODEL_NAME],
-                    "yhat_lo80": fc[f"{MODEL_NAME}-lo-80"],
-                    "yhat_hi80": fc[f"{MODEL_NAME}-hi-80"],
-                }
-            )
-        )
-    return finalize(frames)
+
+def predict_deep(nf, df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Contract-format forecasts from a fitted NeuralForecast (``df`` = history, if reloaded)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fc = nf.predict(df=df, level=[80])
+    return pd.DataFrame(
+        {
+            "unique_id": fc["unique_id"],
+            "ds": fc["ds"],
+            "model_name": MODEL_NAME,
+            "yhat": fc[MODEL_NAME],
+            "yhat_lo80": fc[f"{MODEL_NAME}-lo-80"],
+            "yhat_hi80": fc[f"{MODEL_NAME}-hi-80"],
+        }
+    )

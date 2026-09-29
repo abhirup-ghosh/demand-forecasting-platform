@@ -760,6 +760,24 @@ train it on the full history, and register it for serving.
 - The registered model is loadable via `mlflow.pyfunc.load_model("models:/demand-forecast-champion/Production")`
   without error.
 
+#### Outcome — P0.8 (completed 2026-09-29)
+
+**What we did:** `models/champion.py` — `select_champion()` (the rule, never hardcoded) and
+`ChampionForecaster`, an MLflow pyfunc holding the **real trained NHITS weights** plus context
+history, batch-scored on load (Abhirup's choice over a precomputed table or per-request
+inference). `scripts/train_final_model.py` selects → retrains on all data through 2017-08-15 →
+registers `demand-forecast-champion`, sets stage `Production` (deprecated in MLflow 3 but kept per
+this plan) **and** alias `production`. Only champions with a packager can be registered (NHITS
+now); another winner stops with a clear error. `fit_deep`/`predict_deep` split out of
+`models/deep.py`. `tests/test_champion.py` (6). Makefile exports `PYTHONPATH=src` (hidden-`.pth`
+safeguard).
+
+**Results:** rule → **NHITS** (mean WAPE 14.06% vs Chronos-Bolt-Base 14.55%). Retrain ~50 s.
+Registry: v1 Archived, **v2 Production**, alias `production` → v2 (v2 = input schema fix: `horizon`
+optional). `load_model("models:/demand-forecast-champion/Production")` loads in ~6 s; returns 28
+days (2017-08-16..09-12) per series, `horizon=7` → 7 rows, all-zero series → 0. **Handed forward
+(P0.14):** the model bundles 112 days of real sales per series — see Open Decision #3.
+
 ---
 
 ### P0.9 — Serving API
@@ -1042,7 +1060,11 @@ Things intentionally left unresolved — don't guess at these, resolve them the 
 3. **Committing a trained model artifact into the HF Space repo for P0.14.** Recommended approach as
    written in P0.14 step 2 — but double-check Kaggle's current competition rules text for this
    specific competition before publishing anything derived-model-related publicly, since rules text
-   can vary by competition and can change over time.
+   can vary by competition and can change over time. **Added 2026-09-29 (P0.8):** the registered
+   champion (NHITS, batch-scored) bundles `history.parquet` — the last 112 days of *actual* sales
+   per series, needed as model context. That is raw Kaggle data, not just derived weights, so it
+   must **not** be published as-is in P0.14. Options to decide then: ship only the batch-scored
+   forecast table to the Space, or strip the history and ship forecasts + weights.
 4. **`log1p` vs raw target transform for feature engineering (P0.4).** ~~Decide empirically during
    P0.7 by comparing backtest WAPE with/without on the ML tier; do not fix this in advance.~~
    **Resolved 2026-09-28 (P0.7 backtest): `log1p` for the ML tier.** Mean WAPE 15.2% vs 15.8% raw,
