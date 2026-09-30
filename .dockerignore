@@ -1,0 +1,16 @@
+# Keep the build context small and, above all, keep raw Kaggle data out of every image.
+.git
+.venv
+.env
+.env.*
+eda/
+data/
+mlruns/
+mlruns.db
+results/
+notebooks/
+docs/
+tests/
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache

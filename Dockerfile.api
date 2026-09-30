@@ -1,0 +1,29 @@
+# Forecast API (PLAN.md P0.9 / P0.12). Multi-stage: uv resolves the locked environment in a builder
+# image; the runtime image gets only the virtualenv (no uv, no build tooling), running as non-root.
+#
+# The champion model is NOT baked in: at runtime mount the MLflow store (mlruns.db + mlruns/) and
+# results/leaderboard.csv under /app (docker-compose does this, P0.12). Without them the API still
+# starts (/health = ok) and /forecast answers 503.
+
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
+WORKDIR /app
+# Dependencies first (cached layer), then the project itself as a regular (non-editable) install.
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-editable
+
+FROM python:3.13-slim-bookworm AS runtime
+RUN useradd --create-home --uid 1000 app
+WORKDIR /app
+COPY --from=builder /app/.venv /app/.venv
+# Installed (non-editable) package can't infer the repo root, so point at /app explicitly.
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    MLFLOW_DISABLE_AGENT_HINT=1 \
+    MLFLOW_TRACKING_URI=sqlite:////app/mlruns.db \
+    LEADERBOARD_PATH=/app/results/leaderboard.csv
+USER app
+EXPOSE 8000
+CMD ["uvicorn", "forecasting_platform.serving.api:app", "--host", "0.0.0.0", "--port", "8000"]

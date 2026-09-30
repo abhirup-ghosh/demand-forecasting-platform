@@ -27,7 +27,7 @@ train-final:    ## Retrain + register the champion model (P0.8)
 	uv run python scripts/train_final_model.py
 
 api:            ## Serve the FastAPI forecast service (P0.9)
-	uv run uvicorn forecasting_platform.serving.api:app --reload
+	uv run uvicorn forecasting_platform.serving.api:app --reload --reload-dir src
 
 dashboard:      ## Launch the Streamlit dashboard (P0.10)
 	uv run streamlit run dashboard/app.py

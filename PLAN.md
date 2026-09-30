@@ -804,6 +804,27 @@ days (2017-08-16..09-12) per series, `horizon=7` → 7 rows, all-zero series →
 - `uv run pytest tests/test_api.py` (using FastAPI's `TestClient`) passes, covering `/health` and at
   least one successful and one 404 `/forecast` case.
 
+#### Outcome — P0.9 (completed 2026-09-30)
+
+**What we did:** `serving/schemas.py` (ForecastRequest with `horizon` 1–28, ForecastPoint,
+ForecastResponse, ModelInfo), `serving/api.py` (`create_app(forecaster_factory, leaderboard_path)`:
+`/health`, `/models` = champion + mean backtest metrics, `POST /forecast` → 404 for unknown
+combinations, 503 if the model failed to load; the factory lets tests inject a fake so torch never
+enters the test process), `tests/test_api.py` (10), `Dockerfile.api` (multi-stage uv, non-root,
+paths set via env) + `.dockerignore` (keeps `eda/`/`data/` out of every image). Config gains
+`CHAMPION_MODEL_URI`, `LEADERBOARD_PATH`. `make api` uses `--reload --reload-dir src`.
+
+**Results:** tests 10/10 (suite 82/82). Live: `/health` → `{"status":"ok"}`, `/docs` 200, `/models`
+→ NHITS + 5-fold metrics, `/forecast` → real NHITS forecasts with 80% intervals, unknown store →
+404. The plain `--reload` command reload-looped forever: something outside the project
+intermittently rewrites file flags across `.venv` (the same thing that sets the `hidden` flag), which
+the watcher sees as edits — hence `--reload-dir src`.
+
+**Handed forward (P0.12):** the Docker build is not yet verified (Docker Desktop wasn't running).
+Also: (1) Linux PyTorch wheels pull CUDA (~GBs) — consider the CPU wheel index; (2) MLflow stored
+the model's artifacts at an absolute host path (`/Users/.../mlruns/...`), so the container needs
+that path mounted or the model re-logged with a portable artifact location.
+
 ---
 
 ### P0.10 — Dashboard

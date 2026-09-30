@@ -47,5 +47,9 @@ class Settings(BaseSettings):
     COST_UNDER_PER_UNIT: float = 3.0
     COST_OVER_PER_UNIT: float = 1.0
 
+    # --- Serving (PLAN.md P0.9) ---
+    CHAMPION_MODEL_URI: str = "models:/demand-forecast-champion/Production"
+    LEADERBOARD_PATH: Path = PROJECT_ROOT / "results" / "leaderboard.csv"
+
 
 settings = Settings()
