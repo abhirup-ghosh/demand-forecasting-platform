@@ -9,7 +9,6 @@ mlruns/
 mlruns.db
 results/
 notebooks/
-docs/
 tests/
 **/__pycache__
 **/.pytest_cache

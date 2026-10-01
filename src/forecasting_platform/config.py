@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     # --- Serving (PLAN.md P0.9) ---
     CHAMPION_MODEL_URI: str = "models:/demand-forecast-champion/Production"
     LEADERBOARD_PATH: Path = PROJECT_ROOT / "results" / "leaderboard.csv"
+    BACKTEST_FORECAST_DIR: Path = PROJECT_ROOT / "results" / "forecasts"
+    DOCS_DIR: Path = PROJECT_ROOT / "docs"
+
+    # --- Dashboard (PLAN.md P0.10) ---
+    # True: load the champion in-process (Hugging Face Spaces, one container). False: call the
+    # FastAPI service at API_URL (docker-compose microservice mode, P0.12).
+    DASHBOARD_STANDALONE_MODE: bool = True
+    API_URL: str = "http://localhost:8000"
 
 
 settings = Settings()

@@ -858,6 +858,23 @@ without duplicating the dashboard code.
 - `uv run streamlit run dashboard/app.py` launches locally; all 4 tabs render without error against
   the real (downloaded) data.
 
+#### Outcome — P0.10 (completed 2026-10-01)
+
+**What we did:** `dashboard/app.py` — Overview (the 8 EDA findings + charts, parsed live from
+`docs/eda-findings.md`), Forecast Explorer (store/family/horizon pickers; champion's 28-day forecast
++ 80% band; tier overlay on the fold-1 holdout vs actuals), Model Leaderboard (mean-WAPE bar chart
+with ±sd, sortable summary + all rows), Business Impact (under/over cost sliders recompute costs
+instantly from precomputed under/over unit totals; KPI tiles; all-model cost ranking; warns when a
+different model would be cheaper at the chosen ratio). `DASHBOARD_STANDALONE_MODE` /`API_URL`
+settings switch in-process vs API forecasts. Falls back to `src/` on `sys.path` if the package
+isn't importable (hidden-`.pth` issue). `Dockerfile.dashboard`; `docs/` now allowed in images.
+
+**Results:** Streamlit `AppTest` run of the full app: 0 exceptions, 4 tabs, 8 findings with 8
+charts, 4 Plotly charts, 2 tables, 3 KPIs; still clean after changing series and cost sliders.
+`streamlit run dashboard/app.py` serves (`/_stcore/health` ok, page 200). At 3:1 the champion costs
+25% less than seasonal naive; at 1:3 (over-forecast dearer) Chronos-Bolt-Base becomes cheaper.
+**Handed forward (P0.14):** the Explorer needs raw sales history — see Open Decision #3.
+
 ---
 
 ### P0.11 — Drift monitoring (lightweight)
@@ -1085,7 +1102,11 @@ Things intentionally left unresolved — don't guess at these, resolve them the 
    champion (NHITS, batch-scored) bundles `history.parquet` — the last 112 days of *actual* sales
    per series, needed as model context. That is raw Kaggle data, not just derived weights, so it
    must **not** be published as-is in P0.14. Options to decide then: ship only the batch-scored
-   forecast table to the Space, or strip the history and ship forecasts + weights.
+   forecast table to the Space, or strip the history and ship forecasts + weights. **Same applies
+   to the dashboard (P0.10):** its Forecast Explorer reads `data/processed/features.parquet` (raw
+   sales) and the backtest forecasts are joined with actuals, so the public Space needs a
+   data-free variant (e.g. precomputed aggregates/forecasts only, or plotting forecasts without the
+   raw history file shipped).
 4. **`log1p` vs raw target transform for feature engineering (P0.4).** ~~Decide empirically during
    P0.7 by comparing backtest WAPE with/without on the ML tier; do not fix this in advance.~~
    **Resolved 2026-09-28 (P0.7 backtest): `log1p` for the ML tier.** Mean WAPE 15.2% vs 15.8% raw,
