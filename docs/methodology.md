@@ -7,6 +7,7 @@ behind it, and why it was chosen. It grows one section at a time as the project 
 |---|---|
 | [1. Forecasting models](#1-forecasting-models) | Implemented (PLAN.md P0.6a–e) |
 | [2. Backtesting & evaluation](#2-backtesting--evaluation) | Implemented (PLAN.md P0.5, P0.7) |
+| [3. Drift monitoring](#3-drift-monitoring) | Implemented (PLAN.md P0.11) |
 | Feature engineering | Planned — implemented in P0.4, write-up to follow |
 
 Related documents: [`eda-findings.md`](./eda-findings.md) (the data facts this design responds
@@ -469,6 +470,72 @@ Each (model, fold) pair is logged as an MLflow run: its parameters, every metric
 and a forecast-vs-actual plot for a high-volume and a mid-volume series. The same numbers go to
 `results/leaderboard.csv`, one row per (model, fold), which feeds champion selection (P0.8) and
 the dashboard.
+
+---
+
+## 3. Drift monitoring
+
+### 3.1 Why check for drift at all
+
+A backtest answers "how accurate was this model on past data?" It says nothing about whether the
+*conditions* that data was collected under still hold. If the feature distributions a model was
+trained on have shifted by the time it's actually forecasting, a good backtest score can be
+misleading — the honest fix is retraining, but the first step is simply *noticing* the shift. This
+is a one-shot, point-in-time check (did drift happen between training and now?), not continuous
+monitoring of a live system; that's P1.2.
+
+### 3.2 What is compared
+
+Two windows of the P0.4 feature frame:
+
+- **Reference** — the training period of the *oldest* backtest fold (fold 5): everything a model
+  trained for that fold would have seen. This stands in for "what the model was trained on."
+- **Current** — the *most recent* 28 days in the dataset (fold 1's test period). This stands in
+  for "what the model is being asked to forecast now."
+
+16 columns, split by type: 7 numerical (the three lags, two rolling means, rolling std,
+`oil_price`) and 9 categorical (`dow`, `month`, the three holiday flags, `onpromotion`, store
+type/cluster, family). The categorical list includes columns that are technically integers or
+booleans — day-of-week, cluster id — because what matters for drift here is whether their small,
+discrete set of *values* shifted in frequency, not their magnitude.
+
+### 3.3 How a column is flagged as drifted — and a real bug this surfaced
+
+Evidently picks a statistical test per column automatically (via `DataDriftPreset`), based on the
+column's type and how many distinct values it has. Two families of test appear here, and they
+score drift in **opposite directions**:
+
+- **p-value tests** (e.g. Kolmogorov–Smirnov on a numerical column with few unique values): a
+  **low** p-value means "very unlikely these came from the same distribution" → drift.
+- **Distance tests** (Jensen–Shannon distance for categoricals, Wasserstein distance for most
+  numerical columns here): a **high** distance means the distributions are far apart → drift.
+
+The two are only distinguishable by reading the test's name. A first version of this code treated
+every column's score as if it were a p-value and sorted low-to-high to find "most drifted" — which
+silently **inverted the verdict for every distance-based column** (nearly all of them here). It
+reported `dow`, `family` and `store_type` as the most-drifted columns, when their distance scores
+were in fact an order of magnitude *below* the drift threshold — not drifted at all. The actually
+drifted columns (oil price, the sales-trend features) were buried at the bottom of a list sorted
+backwards.
+
+The fix: determine each column's drift direction from its test's name, and — since a silent
+direction bug is exactly the kind of mistake that doesn't announce itself — add a runtime check
+that the per-column count this produces matches Evidently's own independently-computed overall
+count, so a future library change that renames a test breaks loudly instead of mislabeling columns
+again. The lesson generalises beyond this one library: never assume a score's "good" direction
+without checking it against a known reference count or a planted example.
+
+### 3.4 Reading the result
+
+A dataset is flagged as drifted when at least half its columns individually drift (`drift_share =
+0.5`, Evidently's own threshold mechanism — a stricter or looser bar is a one-line change). On the
+real data, 8 of 16 columns drifted: the oil price (which fell by roughly half over the dataset's
+span), the calendar month (an artefact of the current window covering only two months, not a real
+regime change — worth naming so it isn't mistaken for one), whether an item was on promotion
+(unrecorded before April 2014), and every lag/rolling-mean sales feature (reflecting the ~2.2×
+growth in sales over the dataset, `eda-findings.md` finding 1). Every drifted column traces back
+to a fact the EDA already established — which is itself a kind of validation: the drift report
+and the EDA are describing the same underlying data from two different angles, and they agree.
 
 ---
 

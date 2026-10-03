@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     BACKTEST_FORECAST_DIR: Path = PROJECT_ROOT / "results" / "forecasts"
     DOCS_DIR: Path = PROJECT_ROOT / "docs"
 
+    # --- Drift monitoring (PLAN.md P0.11) ---
+    DRIFT_SUMMARY_PATH: Path = PROJECT_ROOT / "reports" / "generated" / "drift_summary.json"
+    DRIFT_REPORT_PATH: Path = PROJECT_ROOT / "reports" / "generated" / "drift_report.html"
+
     # --- Dashboard (PLAN.md P0.10) ---
     # True: load the champion in-process (Hugging Face Spaces, one container). False: call the
     # FastAPI service at API_URL (docker-compose microservice mode, P0.12).

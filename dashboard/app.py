@@ -50,6 +50,14 @@ def load_leaderboard() -> pd.DataFrame:
     return pd.read_csv(settings.LEADERBOARD_PATH)
 
 
+@st.cache_data
+def load_drift_summary() -> dict | None:
+    """Top-line Evidently drift summary, or None if it hasn't been generated yet."""
+    if not settings.DRIFT_SUMMARY_PATH.exists():
+        return None
+    return json.loads(settings.DRIFT_SUMMARY_PATH.read_text())
+
+
 @st.cache_data(show_spinner="Loading backtest forecasts…")
 def load_backtest_forecasts() -> pd.DataFrame:
     frames = []
@@ -108,12 +116,64 @@ def style(fig: go.Figure, height: int = 420) -> go.Figure:
 
 
 # ---------------------------------------------------------------- tabs
+def _drift_section() -> None:
+    summary = load_drift_summary()
+    st.subheader("Data drift: training history vs. the most recent 28 days")
+    if summary is None:
+        st.caption(
+            "No drift report yet — run `make drift-report` "
+            "(`uv run python scripts/generate_drift_report.py`) to generate one."
+        )
+        return
+    detected = summary["dataset_drift_detected"]
+    n, total = summary["n_columns_drifted"], summary["n_columns_checked"]
+    ref, cur = summary["reference_window"], summary["current_window"]
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.metric(
+            "Columns drifted",
+            f"{n} / {total}",
+            delta="drift detected" if detected else "stable",
+            delta_color="inverse" if detected else "off",
+        )
+    with c2:
+        st.caption(
+            f"Reference: {ref['start']} → {ref['end']} (the oldest backtest fold's training "
+            f"window)  ·  Current: {cur['start']} → {cur['end']} (the most recent 28 days). "
+            f"A column counts as drifted when its distribution's distance/test score crosses "
+            f"that stattest's own threshold; the dataset is flagged when ≥"
+            f"{summary['drift_share_threshold']:.0%} of columns drift."
+        )
+    if detected:
+        st.warning(
+            "Feature distributions have shifted since training — treat old backtest numbers "
+            "with caution until the champion is retrained on recent data."
+        )
+    drifted_cols = pd.DataFrame(summary["columns"])
+    drifted_cols = drifted_cols[drifted_cols["drifted"]] if n else drifted_cols.head(0)
+    if not drifted_cols.empty:
+        st.dataframe(
+            drifted_cols[["column", "score", "threshold", "method"]],
+            column_config={
+                "column": "Feature",
+                "score": st.column_config.NumberColumn("Score", format="%.3f"),
+                "threshold": st.column_config.NumberColumn("Threshold", format="%.2f"),
+                "method": "Test",
+            },
+            hide_index=True,
+            width="stretch",
+        )
+    st.caption(f"Full interactive report: `{settings.DRIFT_REPORT_PATH}`")
+
+
 def tab_overview() -> None:
     st.markdown(
         "Daily unit sales for **1,782 store × product-family series** (54 stores, 33 families, "
         "Ecuador, 2013-01-01 → 2017-08-15). Below are the eight findings from the exploratory "
         "analysis that shaped the modelling choices — full write-up in `docs/eda-findings.md`."
     )
+    _drift_section()
+    st.divider()
     md = (settings.DOCS_DIR / "eda-findings.md").read_text()
     sections = re.split(r"\n(?=## \d\. )", md)[1:]
     for section in sections:

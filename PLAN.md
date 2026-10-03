@@ -896,6 +896,41 @@ evidence of train/serving-skew awareness.
 - `uv run python scripts/generate_drift_report.py` produces `reports/generated/drift_report.html`
   and it opens/renders correctly in a browser.
 
+#### Outcome — P0.11 (completed 2026-10-03)
+
+**What we did:** `monitoring/drift.py` — `build_drift_report()` wraps `DataDriftPreset` (16 of the
+P0.4 feature columns: 7 numerical incl. lags/rolling stats/`oil_price`, 9 categorical incl. the
+holiday flags/`dow`/`month`/`onpromotion`/store & family fields; NaN warm-up rows dropped; each
+dataset capped at 50k rows for speed), `summarize()` extracts the top-line + per-column verdicts.
+`scripts/generate_drift_report.py` compares fold 5's training window (reference) against fold 1's
+test window (current, the most recent 28 days), writes the HTML report + a `drift_summary.json`.
+Dashboard Overview tab (P0.10) now opens with a drift metric, a warning when detected, and a table
+of drifted columns, reading the JSON (no Evidently recompute). `tests/test_drift.py` (12).
+
+**Bug found and fixed before shipping:** Evidently's per-column stattests split into two families
+with *opposite* drift directions — p-value tests flag drift when `value < threshold`, distance
+tests (Jensen-Shannon, Wasserstein, PSI) flag it when `value > threshold` — distinguishable only by
+the method name. An initial version sorted every column by raw value as if it were a p-value, which
+silently **inverted the verdict for every distance-based column** (our data drift report is almost
+entirely distance-based categorical/continuous tests) — e.g. it initially reported `dow`/`family`/
+`store_type` as "most drifted" when their distance scores (0.002–0.007) were actually far *below*
+the 0.1 threshold, i.e. not drifted at all. Fixed in `_column_verdict()` (direction keyed off the
+method name) with a runtime self-check that the recomputed drifted-column count matches Evidently's
+own `DriftedColumnsCount`, so a future Evidently naming change fails loudly instead of silently
+mislabeling again. Added a parametrized direction test plus a regression test exercising both
+families together.
+
+**Results:** DoD met — HTML report renders (4.2 MB, self-contained, valid `<html>`+`<script>`).
+Real data: reference = up to 2017-03-28 (2,758,536 rows), current = 2017-07-19..2017-08-15 (49,896
+rows). **8/16 columns drifted (50%) → dataset_drift_detected=True.** Drifted, most severe first:
+`oil_price` (Wasserstein 0.91 vs 0.1 threshold — oil roughly halved 2013→2017, EDA finding 6),
+`month` (0.68 — reference spans all 12 months, current only Jul/Aug, a window-composition artifact
+worth naming, not a real regime shift), `onpromotion` (0.21 — promotions weren't recorded before
+2014-04, EDA finding 4), then all 5 lag/rolling-mean sales features (0.11–0.12 — the ~2.2x sales
+growth over the dataset, EDA finding 1). Every drifted column traces to a finding already in
+`eda-findings.md` — a coherent result, not noise. Full suite 94/94; dashboard AppTest still 0
+exceptions with the new section.
+
 ---
 
 ### P0.12 — Containerization
