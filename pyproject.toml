@@ -26,12 +26,28 @@ dependencies = [
     "scikit-learn>=1.9.1",
     "statsforecast>=2.1.1",
     "streamlit>=1.64.0",
+    # Only a transitive dep of neuralforecast/chronos-forecasting/pytorch-lightning — listed
+    # directly anyway because [tool.uv.sources] below (the Linux CPU-wheel redirect) only applies
+    # to the project's *direct* dependencies, not ones pulled in transitively.
+    "torch>=2.9.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [build-system]
 requires = ["uv_build>=0.11.29,<0.12.0"]
 build-backend = "uv_build"
+
+# On Linux (the Docker images, PLAN.md P0.12), PyPI's torch wheel pulls in several GB of CUDA
+# runtime libraries (nvidia-cublas-cu12, nvidia-cudnn-cu12, ...) that a CPU-only container never
+# uses. Route Linux installs to PyTorch's own CPU-only wheel index instead; macOS/Windows dev
+# installs are untouched (PyPI already serves the right wheel there).
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "platform_system == 'Linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [

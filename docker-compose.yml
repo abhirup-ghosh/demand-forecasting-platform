@@ -1,0 +1,84 @@
+# Local "microservice" deployment (PLAN.md P0.12): `docker compose up --build` brings up the
+# serving API, the dashboard (calling the API over the network, not loading the model itself —
+# DASHBOARD_STANDALONE_MODE=false), and an MLflow UI for the experiment/registry data.
+#
+# Shared state is bind-mounted from the host (NOT baked into any image, NOT a fresh named volume):
+#   mlruns.db, mlruns/   — the MLflow tracking DB + the registered champion model's artifacts.
+#   results/             — the backtest leaderboard + per-fold forecast caches.
+#   data/processed/      — features.parquet (sales history; dashboard's Forecast Explorer/Overview).
+#   reports/generated/   — the drift report (dashboard's Overview tab).
+#
+# Why a bind-mount, not the named volume the plan sketched: a fresh named volume starts *empty* —
+# with no champion registered, /forecast would just 503 and the DoD below couldn't pass. These
+# directories already hold real content once you've run P0.6-P0.11 on the host (`make
+# backtest`/`train-final`/`drift-report`), and mounting that host state is what lets a single
+# `docker compose up --build` actually serve real forecasts, with no separate training step.
+#
+# The MLflow absolute-path wrinkle (flagged in the P0.8/P0.9 Outcomes): a registered model's
+# artifact_uri is the *absolute host path* it was logged from (MLflow's local FileStore default —
+# not something this compose file controls). The ${PWD}-based mounts below put `mlruns/` at that
+# same absolute path inside each container, so those stored paths resolve unchanged — portable to
+# any machine/username, since each clone's own `${PWD}` will match whatever absolute path *that*
+# machine's own training run used. Requires running `docker compose` from the repo root (standard
+# usage) in a shell that exports PWD (bash/zsh do, by default). Everything else (results/,
+# data/processed/, reports/) has no such constraint, so it mounts at the clean /app/... paths each
+# image already resolves to by default (FORECASTING_PLATFORM_ROOT=/app, set in both Dockerfiles).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: sqlite:///${PWD}/mlruns.db
+    volumes:
+      - ${PWD}/mlruns.db:${PWD}/mlruns.db
+      - ${PWD}/mlruns:${PWD}/mlruns
+      - ${PWD}/results:/app/results:ro
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      DASHBOARD_STANDALONE_MODE: "false"
+      API_URL: http://api:8000
+      # No mlruns.db/mlruns mount: in non-standalone mode the dashboard never loads the model
+      # itself, only calls `api` over HTTP — see champion_forecast() in dashboard/app.py.
+    volumes:
+      - ${PWD}/results:/app/results:ro
+      - ${PWD}/data/processed:/app/data/processed:ro
+      - ${PWD}/reports:/app/reports:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.16.1
+    ports:
+      # Host side only: macOS's AirPlay Receiver (ControlCenter) occupies :5000 by default on
+      # every Mac, so 5000 is published as 5001 here. The server inside the container still runs
+      # on its standard :5000 (--port 5000 below), matching the plan's spec for the service itself.
+      - "5001:5000"
+    environment:
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    volumes:
+      - ${PWD}/mlruns.db:${PWD}/mlruns.db
+      - ${PWD}/mlruns:${PWD}/mlruns
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///${PWD}/mlruns.db
+      --default-artifact-root file://${PWD}/mlruns
+      --host 0.0.0.0
+      --port 5000

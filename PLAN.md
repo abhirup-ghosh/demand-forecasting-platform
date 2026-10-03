@@ -951,6 +951,67 @@ exceptions with the new section.
   `localhost:8501` serves the dashboard and its Forecast Explorer tab successfully calls the `api`
   service (not standalone mode) for a live forecast.
 
+#### Outcome — P0.12 (completed 2026-10-03)
+
+**What we did:** `docker-compose.yml` (api :8000, dashboard :8501, mlflow :5001→5000 — see below)
+plus two real bugs found and fixed while building this, both silent/portability failures rather
+than crashes:
+
+1. **`PROJECT_ROOT` broke under a non-editable install.** `config.py` derived it as
+   `Path(__file__).resolve().parents[2]`, correct only for the editable dev checkout
+   (`<repo>/src/forecasting_platform/config.py`); a non-editable install (`uv sync
+   --no-editable`, what every Dockerfile here uses) puts the file under
+   `.venv/lib/python3.X/site-packages/forecasting_platform/`, where that heuristic silently
+   resolved to `.venv/lib/python3.X` — breaking every PROJECT_ROOT-derived default
+   (`DATA_PROCESSED_DIR`, `LEADERBOARD_PATH`, the P0.11 drift report paths, ...) with no error,
+   just wrong paths. P0.9's Dockerfile had already patched around this for one field
+   (`LEADERBOARD_PATH`) without realizing it was a general problem; P0.11 then added two more
+   PROJECT_ROOT-derived settings that weren't patched. Fixed at the root: `PROJECT_ROOT` now
+   reads `FORECASTING_PLATFORM_ROOT` from the environment first, falling back to the `parents[2]`
+   heuristic; both Dockerfiles set it to `/app` once, fixing every derived path automatically
+   instead of needing a per-field env var repeated (and inevitably missed) in every image.
+   `tests/test_config.py` (2) pins this down directly.
+2. **`[tool.uv.sources]` silently doesn't apply to transitive-only dependencies.** To keep Linux
+   (Docker) images off PyPI's default CUDA-bundled torch wheel (several GB of
+   `nvidia-cudnn-cu13`/`cuda-toolkit`/`triton` a CPU-only container never uses), added a
+   Linux-only `pytorch-cpu` index redirect for `torch` in `pyproject.toml`. It had no effect at
+   all — confirmed empirically (isolated repro) that `[tool.uv.sources]` only rewrites a
+   package's source when it's a **direct** project dependency; torch here was only pulled in
+   transitively (via neuralforecast/chronos-forecasting/pytorch-lightning), so the override was
+   silently ignored and the CUDA-bundled wheel kept getting installed. Fixed by listing
+   `torch>=2.9.1` directly in `dependencies`, which is all `[tool.uv.sources]` needed to apply.
+   Confirmed in the built image: `torch.__version__` → `2.14.1+cpu`, `torch.cuda.is_available()`
+   → `False`, no nvidia-* packages installed.
+
+**`docker-compose.yml` design, deviating from the plan's literal "named volume" in one place
+(explained there and in the file's own header comment):** shared state (`mlruns.db`, `mlruns/`,
+`results/`, `data/processed/`, `reports/generated/`) is **bind-mounted from the host**, not a
+fresh named Docker volume — a fresh volume starts empty, with no champion registered, and
+`/forecast` would just 503, failing the DoD outright. `mlruns/` specifically must mount at the
+*exact absolute host path* (`${PWD}/mlruns`, resolved by Compose from the invoking shell's `PWD`)
+because the registered model's `artifact_uri` is that absolute path (MLflow's local-FileStore
+default, flagged as a known wrinkle in the P0.8/P0.9 Outcomes) — this bind-mount is what makes it
+resolve correctly inside the container, and is portable across machines/usernames since each
+clone's own `${PWD}` matches whatever path *that* machine's own training run used. Everything
+else mounts at the clean `/app/...` paths the images already resolve to by default. Dashboard
+mounts no MLflow state at all: in `DASHBOARD_STANDALONE_MODE=false` it only calls `api` over
+HTTP, confirmed by checking `'torch' not in sys.modules` inside the running dashboard container.
+
+**Also found: port 5000 conflicts with macOS's AirPlay Receiver** on every Mac (`ControlCenter`
+listens there by default) — mlflow's host-side port is published as **5001** instead (the
+container's own `mlflow server --port 5000` is unchanged, matching the plan's spec for the
+service itself).
+
+**Results:** both images build clean (api/dashboard ~3.55 GB each, CPU-only). `docker compose up
+--build` (the literal DoD command) starts all three; `curl localhost:8000/health` → `{"status":
+"ok"}`; `localhost:8501` → 200. Ran `champion_forecast()` *inside the running dashboard
+container* (not just curling the API directly) to prove the real code path: returned a live
+5-day NHITS forecast matching the API's own response exactly, confirming the dashboard→api
+network round trip over the compose network actually works, with `torch` never imported in the
+dashboard process. The `mlflow` service independently reads the same shared SQLite store and
+correctly reports both model versions (v1 Archived, v2 Production) and the `production` alias.
+No errors in any service's logs. Full local suite still 96/96 after the dependency relock.
+
 ---
 
 ### P0.13 — CI

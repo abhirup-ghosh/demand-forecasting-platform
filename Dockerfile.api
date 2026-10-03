@@ -18,12 +18,14 @@ FROM python:3.13-slim-bookworm AS runtime
 RUN useradd --create-home --uid 1000 app
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
-# Installed (non-editable) package can't infer the repo root, so point at /app explicitly.
+# A non-editable install can't infer the repo root from its own file location (see config.py's
+# PROJECT_ROOT comment) — FORECASTING_PLATFORM_ROOT makes every PROJECT_ROOT-derived default
+# (LEADERBOARD_PATH, etc.) resolve to /app correctly, with no per-field overrides needed here.
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     MLFLOW_DISABLE_AGENT_HINT=1 \
-    MLFLOW_TRACKING_URI=sqlite:////app/mlruns.db \
-    LEADERBOARD_PATH=/app/results/leaderboard.csv
+    FORECASTING_PLATFORM_ROOT=/app \
+    MLFLOW_TRACKING_URI=sqlite:////app/mlruns.db
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "forecasting_platform.serving.api:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -5,11 +5,21 @@ variables ad hoc. Values can be overridden via environment variables or a ``.env
 repository root (see ``.env.example``).
 """
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# In a normal editable/dev checkout this file lives at <repo_root>/src/forecasting_platform/
+# config.py, so parents[2] is the repo root. A *non-editable* install — which is what every
+# Dockerfile here uses (`uv sync --no-editable`, PLAN.md P0.12) — puts this file under
+# .venv/lib/python3.X/site-packages/forecasting_platform/ instead, where that heuristic silently
+# resolves to .venv/lib/python3.X: every PROJECT_ROOT-derived default below would then point at a
+# nonexistent path inside the venv. The Dockerfiles set FORECASTING_PLATFORM_ROOT=/app to sidestep
+# this; local/dev runs (and anything else that doesn't set it) keep using the parents[2] heuristic.
+PROJECT_ROOT = Path(
+    os.environ.get("FORECASTING_PLATFORM_ROOT") or Path(__file__).resolve().parents[2]
+)
 
 
 class Settings(BaseSettings):

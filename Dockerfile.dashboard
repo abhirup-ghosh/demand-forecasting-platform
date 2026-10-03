@@ -19,14 +19,15 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY dashboard ./dashboard
 COPY docs ./docs
+# A non-editable install can't infer the repo root from its own file location (see config.py's
+# PROJECT_ROOT comment) — FORECASTING_PLATFORM_ROOT makes every PROJECT_ROOT-derived default
+# (DATA_PROCESSED_DIR, LEADERBOARD_PATH, DOCS_DIR, the drift report paths, ...) resolve to /app
+# correctly, with no per-field overrides needed here.
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     MLFLOW_DISABLE_AGENT_HINT=1 \
+    FORECASTING_PLATFORM_ROOT=/app \
     MLFLOW_TRACKING_URI=sqlite:////app/mlruns.db \
-    DATA_PROCESSED_DIR=/app/data/processed \
-    LEADERBOARD_PATH=/app/results/leaderboard.csv \
-    BACKTEST_FORECAST_DIR=/app/results/forecasts \
-    DOCS_DIR=/app/docs \
     STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 USER app
