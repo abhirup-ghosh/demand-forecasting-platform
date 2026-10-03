@@ -1,5 +1,7 @@
 # Demand Forecasting Platform
 
+[![CI](https://github.com/abhirup-ghosh/demand-forecasting-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/abhirup-ghosh/demand-forecasting-platform/actions/workflows/ci.yml)
+
 An end-to-end, production-shaped **multi-horizon demand forecasting platform**: data → features →
 a full spectrum of forecasting approaches (naive baseline → classical statistical → gradient-boosted
 trees → global deep learning → zero-shot foundation model) → rigorous backtesting with uncertainty

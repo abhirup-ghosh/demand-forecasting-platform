@@ -1,0 +1,32 @@
+# CI (PLAN.md P0.13) — a real, green badge on a public repo. No Kaggle data or trained model is
+# available here: tests run against the synthetic fixture (tests/fixtures/sample_train.csv, P0.2)
+# and the committed results/leaderboard.csv only — see data/README.md and that file's own header
+# for why the real dataset is never committed.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+
+      - run: uv sync
+
+      - run: uv run ruff check .
+
+      - run: uv run pytest --cov=forecasting_platform
+
+      # Build-only (no push, no registry login) — just catches a broken Dockerfile before it ships.
+      - run: docker build -f Dockerfile.api -t forecasting-platform-api:ci .
+
+      - run: docker build -f Dockerfile.dashboard -t forecasting-platform-dashboard:ci .
