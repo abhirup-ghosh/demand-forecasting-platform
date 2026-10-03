@@ -1030,6 +1030,34 @@ fixture design from P0.2), then `docker build` (build-only, no push) for both `D
 - Push a branch, open a PR (or push directly to `main` if working solo), and confirm via
   `gh run list` / the GitHub Actions tab that the workflow runs and passes.
 
+#### Outcome — P0.13 (completed 2026-10-03)
+
+**What we did:** `.github/workflows/ci.yml` — on push/PR to `main`: checkout, `astral-sh/setup-uv`
+(cached), `uv sync`, `uv run ruff check .`, `uv run pytest --cov=forecasting_platform`, then two
+plain `docker build` steps (api, dashboard; build-only, no push — no need for
+docker/build-push-action here, the CLI already does this on the stock runner). Before writing the
+workflow, verified CI-safety empirically rather than assuming it: a fresh `git clone` of only
+tracked files (no `eda/`, `mlruns.db`, `data/processed/`) passed the full suite (96/96) and ruff
+clean — confirming no test secretly depends on real Kaggle data, a trained model, or local host
+state, as the P0.2 synthetic-fixture design intended. Added a CI badge to `README.md` (P0.13's own
+stated goal); the rest of README's placeholders stay for P0.15.
+
+**Real failure, found by actually running it, not just by eyeballing the YAML:** the first push
+failed in 6 seconds — too fast to be real work, so a setup-level problem. Log:
+`Unable to resolve action 'astral-sh/setup-uv@v10', unable to find version 'v10'`.
+`actions/checkout` publishes a rolling major-version tag (`v7`, confirmed via the GitHub tags API)
+the way most actions do, which I'd assumed held generally — `astral-sh/setup-uv` doesn't; it only
+tags exact versions (`v10.2.0`, `v10.1.0`, ...). Checked the actual published tags via `gh api
+repos/astral-sh/setup-uv/tags` before re-pinning to the exact `v10.2.0`, rather than guessing a fix.
+
+**Results:** re-run (`870dbc0`) passed clean end to end in 3m36s — all 8 steps including both
+Docker builds — confirmed via `gh run watch` (not just `gh run list`'s summary) and cross-checked
+with `gh run view --json conclusion,status,headSha`. `gh run list` shows the real failed run too
+(6s, `astral-sh/setup-uv@v10`) — left as-is rather than deleted, an honest record rather than a
+retouched history. One informational annotation, not a failure: GitHub's `ubuntu-latest` runner
+label migrates to Ubuntu 26 on 2026-10-19 — worth a glance if a run fails after that date, nothing
+to act on now.
+
 ---
 
 ### P0.14 — Deployment (public live demo)
