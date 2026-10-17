@@ -5,9 +5,15 @@ Run: ``uv run streamlit run dashboard/app.py``
 Tabs: Overview (EDA findings) · Forecast Explorer · Model Leaderboard · Business Impact.
 
 ``settings.DASHBOARD_STANDALONE_MODE`` picks where champion forecasts come from: in-process via the
-MLflow-registered model (one container, e.g. Hugging Face Spaces) or the FastAPI service at
-``settings.API_URL`` (docker-compose). This module never imports the LightGBM tier, so loading the
-PyTorch-based champion here is safe (see ``forecasting_platform.isolation``).
+MLflow-registered model (one container) or the FastAPI service at ``settings.API_URL``
+(docker-compose). This module never imports the LightGBM tier, so loading the PyTorch-based
+champion here is safe (see ``forecasting_platform.isolation``).
+
+``settings.PUBLIC_DEMO_MODE`` (the public Hugging Face Space, PLAN.md P0.14) overrides both of the
+above: the Kaggle competition rules forbid shipping real sales rows to a public audience (Open
+Decision #3), so in this mode every tab reads only the precomputed, forecasts-and-aggregates-only
+bundle at ``settings.PUBLIC_DEMO_DIR`` (``scripts/export_public_demo.py``) — no raw history file,
+no live model load, no API call.
 """
 
 import importlib.util
@@ -89,8 +95,36 @@ def load_local_forecaster():
     return MlflowForecaster()
 
 
+@st.cache_data(show_spinner="Loading forecasts…")
+def load_public_forecasts() -> pd.DataFrame:
+    return pd.read_parquet(settings.PUBLIC_DEMO_DIR / "forecasts.parquet")
+
+
+@st.cache_data
+def load_public_fold1_forecasts() -> pd.DataFrame:
+    path = settings.PUBLIC_DEMO_DIR / "fold1_backtest_forecasts.parquet"
+    return pd.read_parquet(path) if path.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def load_public_business_totals() -> pd.DataFrame:
+    """Same shape as error_totals() (index=model_name, columns=[under, over, y]), from the
+    precomputed aggregate sums in business_cost_totals.json instead of a live row-level join."""
+    path = settings.PUBLIC_DEMO_DIR / "business_cost_totals.json"
+    if not path.exists():
+        return pd.DataFrame(columns=["under", "over", "y"])
+    totals = json.loads(path.read_text())
+    return pd.DataFrame(totals).T
+
+
 def champion_forecast(unique_id: str, horizon: int) -> tuple[pd.DataFrame, str]:
-    """(forecast rows, model name) from the in-process model or the API, per settings."""
+    """(forecast rows, model name) from the precomputed bundle, the in-process model, or the API."""
+    if settings.PUBLIC_DEMO_MODE:
+        fc = load_public_forecasts()
+        rows = fc[fc["unique_id"] == unique_id].sort_values("ds").head(horizon)
+        if rows.empty:
+            raise KeyError(f"no precomputed public-demo forecast for {unique_id!r}")
+        return rows.reset_index(drop=True), str(rows["model_name"].iloc[0])
     if settings.DASHBOARD_STANDALONE_MODE:
         model = load_local_forecaster()
         return model.forecast(unique_id, horizon), model.model_name
@@ -163,7 +197,8 @@ def _drift_section() -> None:
             hide_index=True,
             width="stretch",
         )
-    st.caption(f"Full interactive report: `{settings.DRIFT_REPORT_PATH}`")
+    if settings.DRIFT_REPORT_PATH.exists():
+        st.caption(f"Full interactive report: `{settings.DRIFT_REPORT_PATH}`")
 
 
 def tab_overview() -> None:
@@ -188,8 +223,8 @@ def tab_overview() -> None:
 
 
 def tab_explorer() -> None:
-    history = load_history()
-    ids = history["unique_id"].drop_duplicates()
+    public = settings.PUBLIC_DEMO_MODE
+    ids = (load_public_forecasts() if public else load_history())["unique_id"].drop_duplicates()
     stores = sorted(ids.str.split("_", n=1).str[0].astype(int).unique())
     families = sorted(ids.str.split("_", n=1).str[1].unique())
     c1, c2, c3 = st.columns([1, 2, 1])
@@ -201,21 +236,29 @@ def tab_explorer() -> None:
     )
     horizon = c3.slider("Horizon (days)", 1, settings.FORECAST_HORIZON, settings.FORECAST_HORIZON)
     uid = f"{store}_{family}"
-    series = history[history["unique_id"] == uid]
+    series = None
+    if not public:
+        history = load_history()
+        series = history[history["unique_id"] == uid]
 
     try:
         fc, model_name = champion_forecast(uid, horizon)
     except (urllib.error.URLError, OSError, KeyError) as exc:
-        source = "standalone" if settings.DASHBOARD_STANDALONE_MODE else settings.API_URL
+        source = (
+            "public demo"
+            if public
+            else ("standalone" if settings.DASHBOARD_STANDALONE_MODE else settings.API_URL)
+        )
         st.error(f"Could not get a forecast ({source}): {exc}")
         return
 
     st.subheader(f"Next {horizon} days — {model_name} (champion)")
-    recent = series[series["ds"] > series["ds"].max() - pd.Timedelta(days=90)]
     fig = go.Figure()
-    fig.add_scatter(
-        x=recent["ds"], y=recent["y"], name="Actual sales", line=dict(color=ACTUAL, width=2)
-    )
+    if not public:
+        recent = series[series["ds"] > series["ds"].max() - pd.Timedelta(days=90)]
+        fig.add_scatter(
+            x=recent["ds"], y=recent["y"], name="Actual sales", line=dict(color=ACTUAL, width=2)
+        )
     fig.add_scatter(
         x=fc["ds"], y=fc["yhat_hi80"], line=dict(width=0), showlegend=False, hoverinfo="skip"
     )
@@ -235,23 +278,31 @@ def tab_explorer() -> None:
     )
     fig.update_yaxes(title="Units sold")
     st.plotly_chart(style(fig), width="stretch")
-    if series["y"].sum() == 0:
+    if public:
+        st.caption(
+            "Public demo: showing the champion's precomputed forecast only. Recent actual sales "
+            "aren't shown here — the Kaggle competition's data-use rules don't permit "
+            "redistributing the dataset to a public audience (see PLAN.md Open Decision #3)."
+        )
+    elif series["y"].sum() == 0:
         st.info("This series has never recorded a sale, so every tier forecasts zero.")
 
     st.subheader("How the tiers compared on the final holdout (fold 1, 2017-07-19 → 08-15)")
-    backtest = load_backtest_forecasts()
-    fold1 = backtest[(backtest["fold"] == 1) & (backtest["unique_id"] == uid)]
+    backtest = load_public_fold1_forecasts() if public else load_backtest_forecasts()
+    fold1 = backtest if public else backtest[backtest["fold"] == 1]
+    fold1 = fold1[fold1["unique_id"] == uid]
     if fold1.empty:
         st.caption("No backtest forecasts found (run `scripts/run_backtest.py`).")
         return
     models = sorted(fold1["model_name"].unique())
     default = [m for m in [model_name, "ChronosBolt-base", "SeasonalNaive"] if m in models]
     chosen = st.multiselect("Tiers to overlay", models, default=default)
-    window = series[series["ds"] >= pd.Timestamp("2017-06-21")]
     fig2 = go.Figure()
-    fig2.add_scatter(
-        x=window["ds"], y=window["y"], name="Actual sales", line=dict(color=ACTUAL, width=2)
-    )
+    if not public:
+        window = series[series["ds"] >= pd.Timestamp("2017-06-21")]
+        fig2.add_scatter(
+            x=window["ds"], y=window["y"], name="Actual sales", line=dict(color=ACTUAL, width=2)
+        )
     for i, m in enumerate(chosen):
         g = fold1[fold1["model_name"] == m]
         fig2.add_scatter(
@@ -260,6 +311,8 @@ def tab_explorer() -> None:
     fig2.add_vline(x=pd.Timestamp("2017-07-19"), line=dict(color=ACTUAL, dash="dot", width=1))
     fig2.update_yaxes(title="Units sold")
     st.plotly_chart(style(fig2, 380), width="stretch")
+    if public:
+        st.caption("Public demo: each line is that tier's own forecast; no ground truth shown.")
 
 
 def tab_leaderboard() -> None:
@@ -326,7 +379,7 @@ def tab_leaderboard() -> None:
 def tab_business() -> None:
     board = load_leaderboard()
     champion, _ = select_champion(board)
-    totals = error_totals()
+    totals = load_public_business_totals() if settings.PUBLIC_DEMO_MODE else error_totals()
     st.markdown(
         "Forecast errors cost money asymmetrically: **under-forecasting** means stock-outs and "
         "lost sales; **over-forecasting** means holding cost and waste. The 3:1 default is an "
@@ -393,11 +446,12 @@ def tab_business() -> None:
 
 # ---------------------------------------------------------------- page
 st.title("Demand Forecasting Platform")
-mode = (
-    "standalone (in-process model)"
-    if settings.DASHBOARD_STANDALONE_MODE
-    else f"API at {settings.API_URL}"
-)
+if settings.PUBLIC_DEMO_MODE:
+    mode = "public demo (precomputed forecasts only — no raw data, see Open Decision #3)"
+elif settings.DASHBOARD_STANDALONE_MODE:
+    mode = "standalone (in-process model)"
+else:
+    mode = f"API at {settings.API_URL}"
 st.caption(
     "28-day forecasts for 1,782 retail series · five model tiers compared by backtest · "
     f"serving: {mode}"

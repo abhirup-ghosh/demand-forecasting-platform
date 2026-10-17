@@ -5,8 +5,8 @@
 An end-to-end, production-shaped **multi-horizon demand forecasting platform**: data → features →
 a full spectrum of forecasting approaches (naive baseline → classical statistical → gradient-boosted
 trees → global deep learning → zero-shot foundation model) → rigorous backtesting with uncertainty
-quantification → a served API and an interactive dashboard → containerized, CI-tested, and deployed
-to a public live demo.
+quantification → a served API and an interactive dashboard → containerized, CI-tested, and runnable
+locally with a single command (see Quick start below).
 
 The concrete demo dataset is daily store-level retail sales (Kaggle's public
 ["Store Sales - Time Series Forecasting"](https://www.kaggle.com/competitions/store-sales-time-series-forecasting/data)
@@ -17,8 +17,6 @@ traffic, or supply-chain planning. Retail is the substrate; the techniques are t
 **Status:** planning complete, implementation in progress. See [`PLAN.md`](./PLAN.md) for the full
 scope, architecture decisions, and task-by-task build plan (source of truth — if this README or the
 GitHub Project board ever disagrees with `PLAN.md`, `PLAN.md` wins).
-
-**Live demo:** _not yet deployed — link goes here once P0.14 ships (see PLAN.md)._
 
 ## Why this exists
 
@@ -43,8 +41,8 @@ once it exists. Summary (full rationale in `PLAN.md`'s Architecture Decisions ta
 - **Serving:** FastAPI inference service + MLflow experiment tracking/model registry.
 - **Interface:** Streamlit dashboard (EDA insights, forecast explorer, model leaderboard, business
   impact view).
-- **Ops:** Docker/docker-compose, GitHub Actions CI, a lightweight Evidently drift report, deployed
-  to Hugging Face Spaces.
+- **Ops:** Docker/docker-compose, GitHub Actions CI, a lightweight Evidently drift report — the
+  whole stack is built to run locally with one command (no public hosting; see PLAN.md P0.14).
 
 ## Quick start
 

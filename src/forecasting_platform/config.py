@@ -73,5 +73,16 @@ class Settings(BaseSettings):
     DASHBOARD_STANDALONE_MODE: bool = True
     API_URL: str = "http://localhost:8000"
 
+    # --- Public demo (PLAN.md P0.14 / Open Decision #3) ---
+    # The Kaggle competition rules (section 7: "you agree not to transmit, duplicate, publish,
+    # redistribute or otherwise provide or make available the Competition Data to any party not
+    # participating in the Competition") forbid shipping real sales rows to a public audience in
+    # any form. When true, the dashboard reads ONLY the precomputed, forecasts-and-aggregates-only
+    # bundle at PUBLIC_DEMO_DIR (scripts/export_public_demo.py) — it never opens
+    # DATA_PROCESSED_DIR, never loads the MLflow model, never calls the API. Takes priority over
+    # DASHBOARD_STANDALONE_MODE/API_URL. This is what the public Hugging Face Space runs with.
+    PUBLIC_DEMO_MODE: bool = False
+    PUBLIC_DEMO_DIR: Path = PROJECT_ROOT / "public_demo"
+
 
 settings = Settings()

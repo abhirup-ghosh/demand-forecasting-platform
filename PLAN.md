@@ -29,7 +29,8 @@ being built to satisfy freshflow.ai or to be submitted anywhere. It is a standal
 practice — not just "a model," but the full loop: rigorous EDA, a deliberately broad spectrum of
 forecasting approaches evaluated head-to-head (not just one algorithm), honest backtesting with
 uncertainty quantification, business-framed evaluation, a served API, an interactive dashboard,
-containerization, CI, lightweight drift monitoring, and a public live demo link. The concrete dataset
+containerization, CI, lightweight drift monitoring, and a polished local/Docker demo with
+screenshots (no public hosting — see P0.14's revised scope, section 4). The concrete dataset
 is retail sales, but every design and writing choice targets the *general* problem class — multi-series
 demand/capacity forecasting under uncertainty — the same shape of problem as staffing levels, energy
 load, web traffic, or supply-chain planning. This is deliberate: the audience is recruiters and
@@ -63,7 +64,7 @@ See the Architecture Decisions table, "Forecasting breadth" row.
 | Containerization | Docker + `docker-compose` (api, dashboard, mlflow services) | Standard, portable, directly runnable by anyone who clones the repo. |
 | CI | GitHub Actions (lint via `ruff`, test via `pytest`, Docker build) | Free on public repos; a visible green-checkmark badge is a cheap, real credibility signal. |
 | Drift monitoring | Evidently — lightweight batch HTML report in P0, continuous/scheduled in P1 | Shows train/serving-skew awareness (real MLOps maturity) without building a full always-on monitoring stack inside a scoped portfolio build. |
-| Deployment target | Hugging Face Spaces (Docker SDK), hosting the dashboard | Free, zero maintenance, no credit card, supports Docker directly — the best fit for a public, always-available recruiter-facing link. The FastAPI service is still fully built/tested/dockerized (see P0.9, P0.12) even though it isn't the thing kept always-on publicly. |
+| Deployment target | Local / `docker compose` only — no public hosting (~~Hugging Face Spaces~~, revised 2026-10-17) | Building the compliant public-Space variant (P0.14) surfaced that Kaggle's rules forbid shipping real sales data to a public audience in any form; Abhirup decided a polished local demo + README screenshots serves the recruiter-facing-banner goal without the hosting/compliance overhead of an always-on public Space. The FastAPI service and both Dockerfiles are still fully built/tested (P0.9, P0.12) — `docker compose up --build` runs the whole stack locally. |
 | Data handling | Kaggle CSVs are **never committed**; the raw-data directory (`eda/data/`, see 3.1) and `data/processed/` are gitignored; data is fetched via the `kaggle` CLI or a documented manual fallback | The repo is **public**. Redistributing the raw competition dataset would violate Kaggle's competition rules. This is a hard constraint, not a style preference — see `data/README.md` (created in P0.2). |
 | Repo naming / narrative framing | "Demand Forecasting Platform"; README/docs written around the general demand-forecasting problem class; real retail data kept as-is (not artificially renamed) | Matches the "generic narrative, real data" decision: real data keeps the project credible and lets you speak to real data-quality issues in interviews, while the writing frames it as a transferable technique set, not a retail project. |
 
@@ -829,8 +830,8 @@ that path mounted or the model re-logged with a portable artifact location.
 
 ### P0.10 — Dashboard
 
-**Goal:** the recruiter-facing interactive surface — this is what the live demo link (P0.14) points
-at.
+**Goal:** the recruiter-facing interactive surface — this is what P0.14's local demo and README
+screenshots show off.
 
 **Files:** `dashboard/app.py`, `Dockerfile.dashboard`
 
@@ -846,10 +847,10 @@ at.
 4. **Business Impact:** sliders for `cost_under`/`cost_over` (defaulting to the illustrative 3:1 from
    P0.7); recompute and display total business cost for the champion model live as the sliders move.
 
-For the **standalone/public deployment mode** (used on Hugging Face Spaces, P0.14), the dashboard
-imports the forecasting/serving logic directly (in-process) rather than calling the FastAPI service
-over the network — HF Spaces' free tier runs one container/process, so this avoids needing two
-always-on services there. For the **local docker-compose mode** (P0.12), wire the dashboard to call
+For the **standalone mode** (the default — `make dashboard`, or P0.14's screenshot run), the
+dashboard imports the forecasting/serving logic directly (in-process) rather than calling the
+FastAPI service over the network, so the whole demo is one process with nothing else to start.
+For the **local docker-compose mode** (P0.12), wire the dashboard to call
 the FastAPI service over the compose network instead, as the more realistic microservice demo. Use a
 config flag (`settings.DASHBOARD_STANDALONE_MODE`, add to `config.py`) to switch between the two
 without duplicating the dashboard code.
@@ -1060,34 +1061,71 @@ to act on now.
 
 ---
 
-### P0.14 — Deployment (public live demo)
+### P0.14 — Local deployment polish & demo screenshots
 
-**Goal:** a clickable, always-available public URL — the single most important recruiter-facing
-artifact in this whole project.
+**Revised scope (2026-10-17, Abhirup's decision).** The original plan below (steps 1-4) was a
+public Hugging Face Space. Doing the compliance work that requires (P0.14 Outcome below)
+surfaced a real constraint: Kaggle's rules (section 7, "Competition Data") forbid
+transmitting/publishing/redistributing the dataset — in any form, including a model's own
+serving context — "to any party not participating in the Competition." That's solvable
+(forecasts-and-aggregates-only, already built — see Outcome), but Abhirup decided the project
+doesn't need an ongoing public URL to do its job: a polished local dashboard, screenshotted for
+the README banner, plus clear run-it-yourself instructions, serves the recruiter-facing goal
+without the hosting/maintenance/compliance overhead of an always-on public Space. **No public
+Space will be created; the original steps 1-4 are superseded, kept below for the record.**
 
-**Files:** a Space-specific Dockerfile (can reuse `Dockerfile.dashboard` with
-`DASHBOARD_STANDALONE_MODE=true`), README badge/link update
+**Goal:** a dashboard that looks genuinely good in a screenshot (for a GitHub README banner), and
+clear enough instructions that anyone can run the full stack on their own machine.
+
+**Files:** `dashboard/app.py` (visual polish pass), `docs/images/` (banner screenshot(s)),
+`README.md` (Quick start section + banner image — README's remaining polish is P0.15's job)
 
 **Steps:**
-1. Create a Hugging Face Space (Docker SDK) named `demand-forecasting-platform` under the
-   `abhirup-ghosh` HF account.
-2. The Space needs the trained champion model artifact available at build time. Since
-   `artifacts/*.pkl`/MLflow's local store are gitignored in the *GitHub* repo (see the Data handling
-   architecture decision — that gitignore rule exists for the raw Kaggle CSVs, not model weights, but
-   the same directories are convenient to exclude broadly), commit a small serialized copy of the
-   champion model **into the HF Space's own git repo** (HF Spaces are separate git repos from
-   GitHub — this does not touch the public GitHub repo's `.gitignore` at all). Before doing this,
-   sanity-check Kaggle's competition rules page: the standard reading is that redistribution
-   restrictions apply to the *raw dataset*, not to derived model weights trained on it, but confirm
-   this against the current rules text for this specific competition before publishing (see Open
-   Decision #3).
-3. Push the dashboard container (standalone mode) to the Space.
-4. Once live, update `README.md`'s "Live demo" line with the real URL, and set the GitHub repo's
-   homepage: `gh repo edit --homepage "<hf-space-url>"`.
+1. Visual polish pass on the dashboard: review against the `dataviz` skill conventions already in
+   use (validated palette, consistent chart styling); make sure the *default* view of each tab —
+   no interaction needed — looks compelling, since that's what a screenshot captures (a sensible
+   default store/family selection, a populated Overview tab, a real leaderboard chart).
+2. Write a clear "Quick start" section in `README.md`: the exact commands from a fresh clone to a
+   running local dashboard (`make setup` → `make dashboard`), and separately the full
+   `docker compose up --build` stack (P0.12) — both already work; this is about writing them up
+   clearly, not new functionality.
+3. Run the dashboard locally, take screenshots (the full app, and perhaps one or two tab
+   close-ups), save under `docs/images/`, and set one as the README's top banner image.
 
 **Definition of Done:**
-- The HF Space builds successfully and serves the dashboard at a public URL.
-- `README.md` no longer says "not yet deployed."
+- README has a banner screenshot near the top and a working, copy-pasteable Quick Start section.
+- No "Live demo: not yet deployed" placeholder remains — replaced with the local-run framing.
+
+---
+
+#### Outcome — P0.14, public-demo groundwork (partial, superseded 2026-10-17)
+
+Before the scope revision above, this task did the compliance work a public Space would have
+needed. That work is **kept** (committed, tested, inactive by default — `PUBLIC_DEMO_MODE`
+defaults to `False`) in case a public deployment is revisited later; it costs nothing to keep and
+documents a real finding.
+
+**What we did:**
+- **Checked Kaggle's actual rules page** (browsed it, not assumed from the plan's original guess):
+  section 7 bans transmitting/publishing/redistributing the Competition Data "to any party not
+  participating in the Competition," and restricts its use to "Competition Use and Academic,
+  Non-Commercial Use Only." This is broader than Open Decision #3's original "raw data vs. derived
+  weights" framing — no exception for derived copies — so the registered champion's bundled
+  `history.parquet` (112 days of real sales, used as model context) and the dashboard's direct
+  reads of `data/processed/features.parquet` both would have needed to go for a public Space.
+- **Built the compliant version anyway:** `scripts/export_public_demo.py` (exports only the
+  champion's forecasts + per-model aggregate under/over-forecast totals + the leaderboard — zero
+  raw sales rows, checked by an assertion in the script itself), a `PUBLIC_DEMO_MODE` setting, and
+  matching branches in `dashboard/app.py` (no "actual sales" trace, a tier-comparison chart with
+  no ground truth). `tests/test_dashboard.py` (4 tests) proves the dashboard renders correctly
+  with **zero raw-data files present** — the real condition a public Space would be in.
+
+**Not resolved, not a blocker for the revised scope:** running `export_public_demo.py` against the
+real trained model hangs (stuck importing `neuralforecast`, which works fine elsewhere in the
+suite — not yet diagnosed; a plausible cause is the installed PyTorch, 2.14.1, having drifted from
+what the champion model was registered with, 2.14.0, in the time since P0.8/P0.12's relock). Worth
+revisiting only if a public Space is picked up again — local/compose deployment never calls this
+code path (`PUBLIC_DEMO_MODE` is off by default).
 
 ---
 
@@ -1099,10 +1137,10 @@ artifact in this whole project.
 
 **Steps:**
 1. Finalize `README.md`: remove every "to be filled in" placeholder; add the final backtest
-   leaderboard as a small table; add the live demo link; add a "Quick start" section with the exact
-   `uv`/`docker compose` commands that actually work at this point.
-2. Write `docs/architecture.md` with a Mermaid diagram of the system (data → features → 5 model tiers
-   → evaluation/MLflow → serving API + dashboard → Docker/CI/HF Spaces) and a short paragraph per
+   leaderboard as a small table; the banner screenshot and Quick start section are already in
+   place from P0.14 — just verify they're current.
+2. Write `docs/architecture.md` with a Mermaid diagram of the system (data → features → model tiers
+   → evaluation/MLflow → serving API + dashboard → Docker/CI) and a short paragraph per
    component.
 3. Write `docs/model-evaluation.md` — this is the direct answer to the original brief's "assess model
    quality, explain in business terms, explain where it reaches its limits" ask:
@@ -1219,18 +1257,17 @@ Things intentionally left unresolved — don't guess at these, resolve them the 
    P0.6e's observed runtime leaves headroom.~~ **Resolved 2026-09-28: Base.** P0.6e measured <1 s
    inference for 60 series with Small, leaving ample headroom; Abhirup chose Base (default
    `CHRONOS_MODEL_ID`). Small remains selectable via `model_id`.
-3. **Committing a trained model artifact into the HF Space repo for P0.14.** Recommended approach as
-   written in P0.14 step 2 — but double-check Kaggle's current competition rules text for this
-   specific competition before publishing anything derived-model-related publicly, since rules text
-   can vary by competition and can change over time. **Added 2026-09-29 (P0.8):** the registered
-   champion (NHITS, batch-scored) bundles `history.parquet` — the last 112 days of *actual* sales
-   per series, needed as model context. That is raw Kaggle data, not just derived weights, so it
-   must **not** be published as-is in P0.14. Options to decide then: ship only the batch-scored
-   forecast table to the Space, or strip the history and ship forecasts + weights. **Same applies
-   to the dashboard (P0.10):** its Forecast Explorer reads `data/processed/features.parquet` (raw
-   sales) and the backtest forecasts are joined with actuals, so the public Space needs a
-   data-free variant (e.g. precomputed aggregates/forecasts only, or plotting forecasts without the
-   raw history file shipped).
+3. **Committing a trained model artifact into the HF Space repo for P0.14.** ~~Recommended approach
+   as written in P0.14 step 2 — but double-check Kaggle's current competition rules text for this
+   specific competition before publishing anything derived-model-related publicly.~~ **Resolved
+   2026-10-17: moot, no public Space.** The rules check happened (P0.14 Outcome): Kaggle's text
+   bans redistributing the Competition Data "to any party not participating in the Competition,"
+   full stop — no derived-copy exception, so the registered champion's bundled `history.parquet`
+   (112 days of real sales, needed as model context) and the dashboard's raw-sales reads both
+   would have needed to go. A compliant forecasts-and-aggregates-only variant was built
+   (`PUBLIC_DEMO_MODE`, `scripts/export_public_demo.py`) and is kept, inactive, in case a public
+   deployment is revisited — but Abhirup decided P0.14 doesn't need a public Space at all, so this
+   question is moot for now.
 4. **`log1p` vs raw target transform for feature engineering (P0.4).** ~~Decide empirically during
    P0.7 by comparing backtest WAPE with/without on the ML tier; do not fix this in advance.~~
    **Resolved 2026-09-28 (P0.7 backtest): `log1p` for the ML tier.** Mean WAPE 15.2% vs 15.8% raw,
@@ -1241,5 +1278,5 @@ Things intentionally left unresolved — don't guess at these, resolve them the 
    live dashboard slider (P0.10), there's no need to "get it right" upfront — Abhirup or a viewer can
    adjust it interactively.
 6. **Whether/when to add this project to `career/site/`.** Per `career/CLAUDE.md` convention 9 and
-   P1.8 above: hold off until P0 actually ships with a real live demo and real backtest results, then
-   ask Abhirup rather than doing it silently.
+   P1.8 above: hold off until P0 actually ships (local demo + screenshots, per P0.14's revised
+   scope) with real backtest results, then ask Abhirup rather than doing it silently.
